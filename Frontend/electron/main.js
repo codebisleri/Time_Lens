@@ -6,7 +6,7 @@
 //   3. start the Next.js server (standalone packaged / `next dev` in dev)
 //   4. open the BrowserWindow on http://127.0.0.1:3000
 //   5. tear both servers down on quit
-const { app, BrowserWindow, Menu, ipcMain, shell, dialog } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, shell, dialog, screen } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const launcher = require("./backend-launcher");
@@ -34,11 +34,19 @@ function dataDir() {
 }
 
 function createWindow() {
+  // Size to the actual display work area (excludes taskbar, accounts for DPI
+  // scaling). Clamp both the initial size AND the minimums so the window can
+  // never exceed the visible screen — otherwise large fixed mins (e.g. 1400×900)
+  // overflow on smaller / scaled displays, cutting off the right and bottom.
+  const { width: areaW, height: areaH } = screen.getPrimaryDisplay().workAreaSize;
+  const winWidth = Math.min(1480, areaW);
+  const winHeight = Math.min(920, areaH);
+
   mainWindow = new BrowserWindow({
-    width: 1480,
-    height: 920,
-    minWidth: 1400,
-    minHeight: 900,
+    width: winWidth,
+    height: winHeight,
+    minWidth: Math.min(1200, areaW),
+    minHeight: Math.min(700, areaH),
     show: false,
     center: true,
     fullscreenable: true,
