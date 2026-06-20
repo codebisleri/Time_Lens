@@ -65,6 +65,7 @@
   ('PIL\\_webp.cp311-win_amd64.pyd',
    'C:\\Projects\\Time_lens_Forecasting-Working\\Backend\\venv\\Lib\\site-packages\\PIL\\_webp.cp311-win_amd64.pyd',
    'EXTENSION'),
+  ('VCOMP140.DLL', 'C:\\Windows\\system32\\VCOMP140.DLL', 'BINARY'),
   ('VCRUNTIME140.dll',
    'C:\\Users\\Admin\\AppData\\Local\\Programs\\Python\\Python311\\VCRUNTIME140.dll',
    'BINARY'),

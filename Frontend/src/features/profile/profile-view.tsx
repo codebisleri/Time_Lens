@@ -36,6 +36,7 @@ import { routes } from "@/lib/constants/routes";
 import { forecastService, segmentationService, workflowService } from "@/lib/api/services";
 import { AlgorithmPortfolio } from "./algorithm-portfolio";
 import type {
+  RoutingSummary,
   SegmentationResult,
   SegmentationThresholds,
   SegmentedSku,
@@ -334,7 +335,17 @@ function ProfileContent({
   // Demand Pattern → Model Routing KPIs — rendered verbatim from the server-side
   // routing summary (computed over ALL profiled SKUs, Streamlit parity). The UI
   // does NOT re-aggregate over a paginated/capped SKU list.
-  const routing = data.routing;
+  //
+  // Default to zeroed counts when the backend omits `routing` — an older/stale
+  // backend build returns a segmentation response without this key, which would
+  // otherwise crash the page on `routing.skusProfiled` (undefined access).
+  const routing: RoutingSummary = data.routing ?? {
+    skusProfiled: 0,
+    coldStart: 0,
+    shortHistory: 0,
+    intermittentLumpy: 0,
+    brands: 0,
+  };
 
   return (
     <>

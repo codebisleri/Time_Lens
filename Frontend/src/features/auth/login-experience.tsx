@@ -6,7 +6,6 @@ import { ShieldCheck } from "lucide-react";
 import { env } from "@/lib/constants/env";
 import { DhishaaiWordmark, TimeLensLogo } from "@/components/common/brand";
 import { PremiumLiveClock } from "@/components/layout/navbar/premium-live-clock";
-import { WindowControls } from "@/components/layout/window-controls";
 import { LoginForm } from "./login-form";
 import { LoginAura } from "./login-aura";
 
@@ -24,13 +23,10 @@ const WORDS = ["Predict.", "Plan.", "Optimize."];
 export function LoginExperience() {
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-[#020817]">
-      {/* D.1 — frameless desktop: a top drag strip + native window controls so
-          the login screen (which has no app header) is still movable/closable.
-          Both are inert in the browser (controls self-hide; drag is no-op). */}
-      <div className="app-drag pointer-events-none absolute inset-x-0 top-0 z-20 h-10" aria-hidden />
-      <div className="absolute right-0 top-0 z-30">
-        <WindowControls />
-      </div>
+      {/* The native window controls (WCO) overlay the top-right; this transparent
+          strip makes the top of the window draggable since the login screen has
+          no app header. Inert in the browser (`app-region` is Electron-only). */}
+      <div className="app-drag absolute inset-x-0 top-0 z-30 h-10" aria-hidden />
 
       {/* Confidential abstract backdrop (no data). */}
       <LoginAura />

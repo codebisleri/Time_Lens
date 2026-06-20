@@ -12,7 +12,6 @@ import { PremiumLiveClock } from "./navbar/premium-live-clock";
 import { ThemeToggle } from "./navbar/theme-toggle";
 import { UserMenu } from "./navbar/user-menu";
 import { CommandTrigger } from "./navbar/command-trigger";
-import { WindowControls } from "./window-controls";
 
 /**
  * Global enterprise product-identity header — the SINGLE branding location and
@@ -100,9 +99,11 @@ export function EnterpriseHeader({
   return (
     <header
       className={cn(
-        // D.1 — this IS the native title bar: the whole header is the window drag
-        // region; interactive children opt out with `app-no-drag`.
-        "app-drag hero-gradient sticky top-0 z-40 flex h-[72px] items-center gap-3 overflow-hidden border-b border-white/10 pl-4 text-white elev-2",
+        // This header IS the title bar (Windows Controls Overlay): the whole bar
+        // is the window drag region, interactive children opt out with
+        // `app-no-drag`, and `titlebar-safe-right` reserves the top-right space so
+        // content never slides under the native min/max/close buttons.
+        "app-drag hero-gradient sticky top-0 z-40 flex h-[72px] items-center gap-3 overflow-hidden border-b border-white/10 pl-4 titlebar-safe-right text-white elev-2",
         className,
       )}
     >
@@ -146,7 +147,7 @@ export function EnterpriseHeader({
         </div>
       ) : null}
 
-      {/* RIGHT — controls + identity + native window controls */}
+      {/* RIGHT — controls + identity */}
       <div className="app-no-drag relative ml-auto flex items-stretch gap-2 self-stretch pl-2">
         {minimal ? (
           <div className="flex items-center gap-2 pr-2">
@@ -169,8 +170,6 @@ export function EnterpriseHeader({
             <UserMenu />
           </div>
         )}
-        {/* Native min/max/close — only renders inside the Electron shell. */}
-        <WindowControls />
       </div>
     </header>
   );

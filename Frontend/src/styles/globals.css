@@ -305,11 +305,18 @@
     .anim-dash, .anim-dash-slow, .anim-float, .anim-pulse-soft { animation: none; }
   }
 
-  /* D.1 — native desktop frameless window drag regions. The custom title bar
-     (the global header / login top strip) is draggable; interactive controls opt
-     out so clicks still register. No-ops in the browser (Electron-only prop). */
+  /* Native desktop window drag regions. With the Windows Controls Overlay the
+     app header doubles as the title bar: the header is draggable, interactive
+     controls opt out so clicks still register. No-ops in the browser. */
   .app-drag { -webkit-app-region: drag; app-region: drag; }
   .app-no-drag { -webkit-app-region: no-drag; app-region: no-drag; }
+
+  /* Reserve the right edge of the title bar for the OS window-controls overlay
+     (Windows WCO) so header content never sits under the min/max/close buttons.
+     In the browser (no overlay) env() is unset → falls back to a normal 1rem. */
+  .titlebar-safe-right {
+    padding-right: max(1rem, calc(100vw - env(titlebar-area-width, 100vw)));
+  }
 
   /* Enterprise elevation utilities. */
   .elev-1 { box-shadow: var(--shadow-sm); }

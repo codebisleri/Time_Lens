@@ -50,11 +50,22 @@ function createWindow() {
     show: false,
     center: true,
     fullscreenable: true,
-    // Frameless native shell — the app paints its own title bar / controls.
-    frame: false,
+    // Dark title bar via the Windows Controls Overlay (WCO): keep the REAL native
+    // minimize/maximize/close buttons, but paint the title-bar area to match the
+    // app header (#081a36) so there is no white OS strip. The app header doubles
+    // as the title bar — it carries the drag region and reserves the top-right
+    // space for the overlaid controls (see `.titlebar-safe-right`). This is NOT
+    // frameless mode: the window frame/borders remain and we never draw custom
+    // window buttons; only native controls are used.
+    frame: true,
     titleBarStyle: "hidden",
+    titleBarOverlay: {
+      color: "#081a36",
+      symbolColor: "#ffffff",
+      height: 72,
+    },
     autoHideMenuBar: true,
-    backgroundColor: "#071B34",
+    backgroundColor: "#081a36",
     title: "Time Lens",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
