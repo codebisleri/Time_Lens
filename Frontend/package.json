@@ -40,14 +40,11 @@
       "!**/node_modules/**"
     ],
     "asar": true,
+    "afterPack": "electron/after-pack.js",
     "extraResources": [
       {
         "from": "../Backend/dist/backend",
         "to": "backend"
-      },
-      {
-        "from": ".next/standalone",
-        "to": "web"
       }
     ],
     "win": {
