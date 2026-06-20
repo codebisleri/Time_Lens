@@ -4,7 +4,27 @@
 //
 // Downloads are NOT automatic (`autoDownload = false`) — the user confirms in the
 // in-app dialog. Updates only function in packaged builds (guarded in main.js).
-const { autoUpdater } = require("electron-updater");
+//
+// Defensive load: if `electron-updater` is ever absent from the packaged asar
+// (e.g. a misconfigured `build.files`), DO NOT crash the whole app on startup.
+// Fall back to safe no-ops so the window still opens — auto-update simply
+// becomes inert until the dependency is packaged correctly again.
+let autoUpdater;
+try {
+  autoUpdater = require("electron-updater").autoUpdater;
+} catch (err) {
+  console.warn(
+    "[updater] electron-updater unavailable — auto-update disabled:",
+    err?.message || err,
+  );
+  module.exports = {
+    init() {},
+    checkForUpdates() {},
+    downloadUpdate() {},
+    quitAndInstall() {},
+  };
+  return;
+}
 
 let targetWindow = null;
 let lastChecked = null;

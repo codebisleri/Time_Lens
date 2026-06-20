@@ -10,7 +10,7 @@
 // electron-builder finishes packing — a plain recursive fs copy with no
 // filtering: `.next/standalone/*` → `<app>/resources/web/` (server.js,
 // package.json, node_modules/, .next/static/, public/, everything).
-const { cpSync, existsSync } = require("node:fs");
+const { cpSync, existsSync, rmSync } = require("node:fs");
 const path = require("node:path");
 
 exports.default = async function afterPack(context) {
@@ -32,6 +32,19 @@ exports.default = async function afterPack(context) {
       `[after-pack] ${standalone}\\node_modules is missing — the standalone build is incomplete.`,
     );
   }
+  // Validate the SOURCE entrypoint up front — never copy from an incomplete
+  // standalone and only discover it at the post-copy check.
+  if (!existsSync(path.join(standalone, "server.js"))) {
+    throw new Error(
+      `[after-pack] ${standalone}\\server.js is missing — re-run \`npm run build:web\`.`,
+    );
+  }
+
+  // Clear any stale/partial `resources/web` left by a previous (or concurrent)
+  // build. cpSync MERGES into an existing dir, so a locked or half-written dest
+  // from an earlier run could otherwise leave server.js missing here even though
+  // the source standalone is complete — the exact "missing server.js" failure.
+  rmSync(dest, { recursive: true, force: true });
 
   // 1. The full standalone payload (server.js, package.json, node_modules,
   //    .next/server, …) — a plain recursive copy, no filtering.
