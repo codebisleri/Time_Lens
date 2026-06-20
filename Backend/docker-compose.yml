@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # ============================================================================
+  # Time Lens Streamlit Application
+  # ============================================================================
+  timelens:
+    build: .
+    container_name: timelens_app
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./logs:/app/logs
+    environment:
+      - NUM_WORKERS=4
+      - BATCH_SIZE=1000
+      - STREAMLIT_SERVER_HEADLESS=true
+      - STREAMLIT_LOGGER_LEVEL=info
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # Optional: Nginx Reverse Proxy (for production)
+  # ============================================================================
+  nginx:
+    image: nginx:latest
+    container_name: timelens_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - timelens
+    restart: always
+
+  # ============================================================================
+  # Optional: PostgreSQL Database (for model caching/logging)
+  # ============================================================================
+  # Uncomment to enable database backend
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: timelens_db
+  #   environment:
+  #     POSTGRES_USER: timelens
+  #     POSTGRES_PASSWORD: secure_password
+  #     POSTGRES_DB: timelens_prod
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   restart: always
+
+# ============================================================================
+# Docker Network (all services communicate via service name)
+# ============================================================================
+networks:
+  default:
+    name: timelens_network
+
+# ============================================================================
+# Volumes for persistent data
+# ============================================================================
+volumes:
+  # postgres_data:
+  #   driver: local

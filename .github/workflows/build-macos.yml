@@ -1,0 +1,92 @@
+name: Build macOS
+
+# D.7 — macOS desktop release pipeline. Manual trigger only (workflow_dispatch);
+# builds the PyInstaller backend, the Next.js standalone web bundle, and the
+# Electron .dmg/.zip for Intel (x64) + Apple Silicon (arm64), then uploads them.
+# Unsigned (matches package.json build.mac: identity null / hardenedRuntime false).
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Backend (FastAPI → PyInstaller onedir) ──────────────────────────────
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: Backend/requirements_fixed.txt
+
+      - name: Install backend dependencies
+        working-directory: Backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_fixed.txt
+          pip install pyinstaller
+
+      - name: Build backend (PyInstaller)
+        working-directory: Backend
+        run: python -m PyInstaller backend.spec --noconfirm
+
+      - name: Verify backend bundle
+        working-directory: Backend
+        run: |
+          test -f dist/backend/backend || { echo "backend executable missing"; exit 1; }
+          test -d dist/backend/_internal || { echo "_internal payload missing"; exit 1; }
+          ls -la dist/backend | head -n 20
+
+      # ── Frontend (Next.js standalone) ───────────────────────────────────────
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: Frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: Frontend
+        run: npm ci
+
+      - name: Build web (standalone)
+        working-directory: Frontend
+        run: npm run build:web
+
+      - name: Verify standalone bundle
+        working-directory: Frontend
+        run: |
+          test -f .next/standalone/server.js || { echo "standalone server.js missing"; exit 1; }
+          test -d .next/standalone/.next/static || { echo "static assets missing"; exit 1; }
+          test -d .next/standalone/public || { echo "public assets missing"; exit 1; }
+
+      # ── Desktop (Electron → dmg + zip, Intel + Apple Silicon) ───────────────
+      - name: Build macOS desktop (dmg + zip, x64 + arm64)
+        working-directory: Frontend
+        env:
+          # Unsigned build — don't let electron-builder look for signing certs.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npx electron-builder --mac dmg zip
+
+      - name: List build output
+        working-directory: Frontend
+        run: ls -la dist-desktop || true
+
+      # ── Artifacts ───────────────────────────────────────────────────────────
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: timelens-macos
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            Frontend/dist-desktop/*.dmg
+            Frontend/dist-desktop/*.zip
+            Frontend/dist-desktop/*.blockmap
+            Frontend/dist-desktop/latest-mac.yml

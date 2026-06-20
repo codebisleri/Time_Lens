@@ -1,0 +1,18 @@
+<svg width="800" height="360" viewBox="0 0 800 360" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Confidence band">
+  <!-- Forecast median with a widening prediction interval (P10–P90). -->
+  <defs>
+    <linearGradient id="cb-fill" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7fc4e8" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#7fc4e8" stop-opacity="0.20"/>
+    </linearGradient>
+  </defs>
+  <!-- Outer band (P10–P90) fanning out toward the horizon. -->
+  <path d="M20 200 C 180 188, 360 150, 560 92 C 660 64, 740 52, 790 46 L 790 150 C 740 150, 660 156, 560 176 C 360 214, 180 232, 20 232 Z" fill="url(#cb-fill)"/>
+  <!-- Inner band (P25–P75). -->
+  <path d="M20 208 C 180 198, 360 166, 560 120 C 660 98, 740 90, 790 86 L 790 122 C 740 124, 660 130, 560 148 C 360 192, 180 216, 20 220 Z" fill="#7fc4e8" fill-opacity="0.16"/>
+  <!-- Median forecast line. -->
+  <path d="M20 214 C 180 206, 360 178, 560 134 C 660 112, 740 102, 790 100" stroke="#f7a24d" stroke-width="3" stroke-linecap="round"/>
+  <g stroke="#bfe0f2" stroke-opacity="0.16" stroke-width="1">
+    <line x1="20" y1="300" x2="790" y2="300"/>
+  </g>
+</svg>

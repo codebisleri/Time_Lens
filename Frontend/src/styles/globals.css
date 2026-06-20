@@ -1,0 +1,334 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * DhishaAI Forecasting Platform — brand token system (design refresh).
+ * Source of truth = the DhishaAI logo: Dhisha Blue #073e5c (hsl 201 86% 19%)
+ * and Dhisha Orange #ef7602 (hsl 29 96% 47%), with cool blue-grey neutrals.
+ * Dark-first: .dark is the default brand experience; :root is the derived light
+ * theme. Tokens are HSL channel triplets ("H S% L%") wrapped as
+ * hsl(var(--token) / <alpha>). The sidebar is a deep navy rail in BOTH themes
+ * (enterprise planning-tool convention). Charts read --chart-* via
+ * src/styles/echarts-theme.ts; "Actual" = brand blue, "Forecast" = brand orange.
+ */
+
+@layer base {
+  /* ── Light theme (derived) ────────────────────────────────────────────── */
+  :root {
+    /* ── STRICT DUAL-BRAND SYSTEM (F.16): navy #071B34 + orange #EF7602 ONLY.
+       White/grey permitted for text. No blue/green/purple/red accents.
+       navy #071B34 ≈ hsl(213 76% 12%) · orange #EF7602 = hsl(29 96% 47%). */
+    --brand: 213 76% 12%;          /* Brand Navy */
+    --brand-foreground: 0 0% 100%;
+    --brand-accent: 29 96% 47%;    /* Brand Orange (primary identity) */
+    --brand-accent-foreground: 0 0% 100%;
+
+    --background: 210 33% 99%;
+    --foreground: 213 60% 12%;     /* navy text */
+
+    --card: 0 0% 100%;
+    --card-foreground: 213 60% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 213 60% 12%;
+
+    --primary: 29 96% 47%;         /* Orange — primary identity */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 29 30% 95%;       /* faint orange tint */
+    --secondary-foreground: 213 50% 18%;
+    --muted: 210 22% 95%;
+    --muted-foreground: 213 14% 40%;
+    --accent: 29 60% 94%;          /* orange-tinted hover */
+    --accent-foreground: 213 42% 18%;
+
+    /* No red/green — all functional states map to ORANGE (use ICONS to
+       distinguish error/success). */
+    --destructive: 29 96% 47%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 29 96% 47%;
+    --success-foreground: 0 0% 100%;
+    --warning: 29 96% 47%;
+    --warning-foreground: 0 0% 100%;
+    --info: 29 96% 47%;
+    --info-foreground: 0 0% 100%;
+
+    --border: 29 40% 86%;          /* faint orange border */
+    --input: 29 32% 88%;
+    --ring: 29 96% 47%;            /* focus = Orange */
+
+    /* Deep navy rail (both themes) */
+    --sidebar: 213 76% 10%;
+    --sidebar-foreground: 210 16% 74%;
+    --sidebar-border: 29 30% 22%;
+    --sidebar-accent: 29 55% 20%;  /* orange-tinted active */
+
+    /* Two-color series palette — navy + orange + neutral grey ONLY. */
+    --chart-1: 213 60% 22%;        /* Navy — Actual / Historical */
+    --chart-2: 29 96% 47%;         /* Orange */
+    --chart-3: 213 14% 55%;        /* neutral grey */
+    --chart-4: 29 80% 64%;         /* light orange */
+    --chart-5: 29 96% 47%;         /* Orange — Forecast */
+    --chart-6: 213 30% 38%;        /* muted navy */
+    --chart-7: 210 10% 55%;        /* grey */
+    --chart-8: 29 60% 38%;         /* deep orange */
+    --chart-grid: 213 20% 88%;
+    --chart-axis: 213 14% 45%;
+
+    /* Forecasting confidence-band fills (chart authors read these). */
+    --chart-band: 213 60% 22%;     /* actual/history band tint (navy) */
+    --chart-band-forecast: 29 96% 47%; /* forecast horizon tint (orange) */
+
+    /* Elevated surfaces + brand-tinted planning surfaces. */
+    --surface: 0 0% 100%;
+    --surface-muted: 210 30% 97%;
+    --hero-from: 213 76% 12%;      /* navy */
+    --hero-via: 213 64% 16%;
+    --hero-to: 213 54% 20%;
+
+    /* Enterprise elevation scale (Level 1 / 2 / 3). */
+    --shadow-sm: 0 2px 8px hsl(222 47% 11% / 0.08);
+    --shadow-md: 0 8px 24px hsl(222 47% 11% / 0.12);
+    --shadow-lg: 0 20px 60px hsl(222 47% 11% / 0.16);
+
+    /* Glassmorphism surface (enterprise glass — light, restrained). */
+    --glass-bg: 0 0% 100% / 0.72;
+    --glass-border: 29 96% 47% / 0.18;
+
+    --radius: 0.5rem;
+  }
+
+  /* ── Dark theme (primary / default brand experience) ──────────────────── */
+  .dark {
+    /* STRICT DUAL-BRAND (F.16) — navy #071B34 + orange #EF7602 only. Orange is
+       the primary identity; navy is the surface; white/grey for text. */
+    --brand: 213 76% 14%;          /* Brand Navy (lifted for visibility) */
+    --brand-foreground: 0 0% 100%;
+    --brand-accent: 29 96% 50%;    /* Brand Orange */
+    --brand-accent-foreground: 0 0% 100%;
+
+    --background: 213 76% 11%;     /* #071B34 navy */
+    --foreground: 0 0% 100%;       /* white text */
+
+    --card: 213 58% 14%;           /* navy card */
+    --card-foreground: 0 0% 100%;
+    --popover: 213 62% 12%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 29 96% 50%;         /* Orange — primary identity */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 213 42% 18%;      /* navy tint */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 213 38% 17%;
+    --muted-foreground: 210 16% 72%;  /* grey text */
+    --accent: 29 45% 18%;          /* dark orange-tinted hover */
+    --accent-foreground: 0 0% 100%;
+
+    /* No red/green — functional states map to ORANGE (icons distinguish). */
+    --destructive: 29 96% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 29 96% 50%;
+    --success-foreground: 0 0% 100%;
+    --warning: 29 96% 52%;
+    --warning-foreground: 213 76% 11%;
+    --info: 29 96% 50%;
+    --info-foreground: 0 0% 100%;
+
+    --border: 29 30% 22%;          /* subtle orange-tinted border */
+    --input: 29 26% 24%;
+    --ring: 29 96% 52%;            /* focus = Orange */
+
+    --sidebar: 213 80% 8%;         /* deepest navy */
+    --sidebar-foreground: 210 16% 72%;
+    --sidebar-border: 29 30% 20%;
+    --sidebar-accent: 29 50% 20%;  /* orange-tinted active */
+
+    /* Two-color series palette (dark) — navy + orange + neutral grey ONLY. */
+    --chart-1: 210 24% 84%;        /* light neutral — Actual / Historical */
+    --chart-2: 29 96% 52%;         /* Orange */
+    --chart-3: 210 14% 62%;        /* mid grey */
+    --chart-4: 29 82% 66%;         /* light orange */
+    --chart-5: 29 96% 52%;         /* Orange — Forecast */
+    --chart-6: 213 30% 50%;        /* muted navy */
+    --chart-7: 210 10% 58%;        /* grey */
+    --chart-8: 29 62% 44%;         /* deep orange */
+    --chart-grid: 0 0% 100%;       /* white (theme applies low opacity) */
+    --chart-axis: 0 0% 100%;
+
+    --chart-band: 210 24% 84%;
+    --chart-band-forecast: 29 96% 52%;
+
+    --surface: 213 50% 13%;
+    --surface-muted: 213 60% 10%;
+    --hero-from: 213 80% 8%;       /* deep navy */
+    --hero-via: 213 62% 13%;
+    --hero-to: 213 52% 17%;
+
+    --shadow-sm: 0 2px 8px hsl(0 0% 0% / 0.35);
+    --shadow-md: 0 10px 40px hsl(0 0% 0% / 0.45);
+    --shadow-lg: 0 20px 60px hsl(0 0% 0% / 0.62);
+
+    /* Glass on dark = tinted navy panel with an orange-tinted border. */
+    --glass-bg: 213 58% 13% / 0.65;
+    --glass-border: 29 96% 50% / 0.15;
+  }
+}
+
+@keyframes tl-dash {
+  to { stroke-dashoffset: -140; }
+}
+@keyframes tl-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+@keyframes tl-pulse-soft {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.5; }
+}
+@keyframes tl-shimmer {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(360%); }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    /* Smooth-scroll for sidebar sub-navigation #anchor links (F.9 Part 9). */
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+  }
+  /* Thin, unobtrusive scrollbars — the Linear/Datadog feel. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-border;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/70;
+  }
+}
+
+/*
+ * Forecasting visual language — reusable surface treatments. These give the app
+ * an enterprise demand-planning identity instead of a generic admin look.
+ */
+@layer components {
+  /* The deep-navy → blue forecasting hero gradient (logo-derived). */
+  .hero-gradient {
+    background-image: linear-gradient(
+      135deg,
+      hsl(var(--hero-from)) 0%,
+      hsl(var(--hero-via)) 52%,
+      hsl(var(--hero-to)) 100%
+    );
+  }
+
+  /* Premium elevated card — used for KPI tiles / executive surfaces. */
+  .surface-elevated {
+    background-color: hsl(var(--card));
+    box-shadow: var(--shadow-md);
+  }
+
+  /* Forecast-accent header rail (blue → orange), the brand "signature" stripe. */
+  .brand-rail {
+    background-image: linear-gradient(
+      to bottom,
+      hsl(var(--brand)),
+      hsl(var(--brand-accent))
+    );
+  }
+
+  /* Enterprise glass panel — theme-aware (white-ish on light, navy on dark). */
+  .glass {
+    background-color: hsl(var(--glass-bg));
+    border: 1px solid hsl(var(--glass-border));
+    -webkit-backdrop-filter: blur(16px) saturate(1.2);
+    backdrop-filter: blur(16px) saturate(1.2);
+    box-shadow: var(--shadow-md);
+  }
+  /* Brighter glass for floating widgets over the dark hero gradient. */
+  .glass-on-dark {
+    background-color: hsl(0 0% 100% / 0.10);
+    border: 1px solid hsl(0 0% 100% / 0.18);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    backdrop-filter: blur(14px) saturate(1.2);
+  }
+}
+
+@layer utilities {
+  /* Subtle analytical grid backdrop for planning surfaces. */
+  .bg-analytics-grid {
+    background-image: linear-gradient(
+        hsl(var(--foreground) / 0.05) 1px,
+        transparent 1px
+      ),
+      linear-gradient(90deg, hsl(var(--foreground) / 0.05) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  /* Brand text gradient for hero numerals / accents. */
+  .text-gradient-brand {
+    background-image: linear-gradient(
+      90deg,
+      hsl(var(--brand)),
+      hsl(var(--brand-accent))
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Tabular figures for metric-heavy surfaces. */
+  .nums {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+
+  /* Login backdrop — lightweight forecasting animations (Part F.9 1.2). */
+  .anim-dash {
+    stroke-dasharray: 6 8;
+    animation: tl-dash 6s linear infinite;
+  }
+  .anim-dash-slow {
+    stroke-dasharray: 4 10;
+    animation: tl-dash 11s linear infinite;
+  }
+  .anim-float { animation: tl-float 7s ease-in-out infinite; }
+  .anim-pulse-soft { animation: tl-pulse-soft 5s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) {
+    .anim-dash, .anim-dash-slow, .anim-float, .anim-pulse-soft { animation: none; }
+  }
+
+  /* D.1 — native desktop frameless window drag regions. The custom title bar
+     (the global header / login top strip) is draggable; interactive controls opt
+     out so clicks still register. No-ops in the browser (Electron-only prop). */
+  .app-drag { -webkit-app-region: drag; app-region: drag; }
+  .app-no-drag { -webkit-app-region: no-drag; app-region: no-drag; }
+
+  /* Enterprise elevation utilities. */
+  .elev-1 { box-shadow: var(--shadow-sm); }
+  .elev-2 { box-shadow: var(--shadow-md); }
+  .elev-3 { box-shadow: var(--shadow-lg); }
+
+  /*
+   * App canvas — replaces flat empty backgrounds with a very subtle analytical
+   * planning surface: a faint grid + soft radial "planning light" + a low
+   * demand-line tint. Professional, never busy. Works in light and dark.
+   */
+  .bg-app {
+    background-color: hsl(var(--background));
+    background-image:
+      radial-gradient(60% 50% at 88% -5%, hsl(var(--brand-accent) / 0.06), transparent 60%),
+      radial-gradient(55% 45% at 0% 0%, hsl(var(--brand) / 0.08), transparent 55%),
+      linear-gradient(hsl(var(--foreground) / 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--foreground) / 0.025) 1px, transparent 1px);
+    background-size: 100% 100%, 100% 100%, 32px 32px, 32px 32px;
+    background-attachment: fixed, fixed, fixed, fixed;
+  }
+}

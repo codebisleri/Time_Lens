@@ -1,0 +1,901 @@
+date,sku,product_name,category,brand,unit_price,sales,revenue
+2022-01-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,833,166600
+2022-02-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,824,164800
+2022-03-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,815,163000
+2022-04-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,826,165200
+2022-05-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,857,171400
+2022-06-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,871,174200
+2022-07-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,805,161000
+2022-08-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,841,168200
+2022-09-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,886,177200
+2022-10-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,888,177600
+2022-11-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,917,183400
+2022-12-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,938,187600
+2023-01-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,885,177000
+2023-02-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,919,183800
+2023-03-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,958,191600
+2023-04-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,961,192200
+2023-05-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,945,189000
+2023-06-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,958,191600
+2023-07-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,992,198400
+2023-08-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,967,193400
+2023-09-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,996,199200
+2023-10-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,1030,206000
+2023-11-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,981,196200
+2023-12-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,991,198200
+2024-01-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,1050,210000
+2024-02-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,1022,204400
+2024-03-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,1042,208400
+2024-04-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,1029,205800
+2024-05-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,1062,212400
+2024-06-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,1091,218200
+2024-07-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,1102,220400
+2024-08-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,1113,222600
+2024-09-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,1079,215800
+2024-10-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,1108,221600
+2024-11-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,1113,222600
+2024-12-01,TRD-1001,Steady Trend 1,Apparel,BrandA,200,1133,226600
+2022-01-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,977,224710
+2022-02-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,969,222870
+2022-03-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,970,223100
+2022-04-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,988,227240
+2022-05-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1019,234370
+2022-06-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1007,231610
+2022-07-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1032,237360
+2022-08-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1020,234600
+2022-09-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1042,239660
+2022-10-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1045,240350
+2022-11-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1083,249090
+2022-12-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1077,247710
+2023-01-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1055,242650
+2023-02-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1073,246790
+2023-03-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1101,253230
+2023-04-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1125,258750
+2023-05-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1176,270480
+2023-06-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1157,266110
+2023-07-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1142,262660
+2023-08-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1189,273470
+2023-09-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1206,277380
+2023-10-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1190,273700
+2023-11-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1225,281750
+2023-12-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1184,272320
+2024-01-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1265,290950
+2024-02-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1217,279910
+2024-03-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1253,288190
+2024-04-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1223,281290
+2024-05-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1280,294400
+2024-06-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1297,298310
+2024-07-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1235,284050
+2024-08-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1303,299690
+2024-09-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1302,299460
+2024-10-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1337,307510
+2024-11-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1301,299230
+2024-12-01,TRD-1002,Steady Trend 2,Apparel,BrandA,230,1395,320850
+2022-01-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1096,284960
+2022-02-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1105,287300
+2022-03-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1101,286260
+2022-04-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1167,303420
+2022-05-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1197,311220
+2022-06-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1131,294060
+2022-07-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1165,302900
+2022-08-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1218,316680
+2022-09-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1219,316940
+2022-10-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1197,311220
+2022-11-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1239,322140
+2022-12-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1273,330980
+2023-01-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1234,320840
+2023-02-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1286,334360
+2023-03-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1315,341900
+2023-04-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1301,338260
+2023-05-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1294,336440
+2023-06-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1341,348660
+2023-07-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1325,344500
+2023-08-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1417,368420
+2023-09-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1336,347360
+2023-10-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1386,360360
+2023-11-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1429,371540
+2023-12-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1391,361660
+2024-01-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1383,359580
+2024-02-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1400,364000
+2024-03-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1420,369200
+2024-04-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1441,374660
+2024-05-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1472,382720
+2024-06-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1486,386360
+2024-07-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1515,393900
+2024-08-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1522,395720
+2024-09-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1478,384280
+2024-10-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1567,407420
+2024-11-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1529,397540
+2024-12-01,TRD-1003,Steady Trend 3,Apparel,BrandA,260,1517,394420
+2022-01-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1263,366270
+2022-02-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1260,365400
+2022-03-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1261,365690
+2022-04-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1279,370910
+2022-05-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1339,388310
+2022-06-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1324,383960
+2022-07-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1335,387150
+2022-08-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1362,394980
+2022-09-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1329,385410
+2022-10-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1388,402520
+2022-11-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1392,403680
+2022-12-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1440,417600
+2023-01-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1433,415570
+2023-02-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1504,436160
+2023-03-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1478,428620
+2023-04-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1481,429490
+2023-05-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1470,426300
+2023-06-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1470,426300
+2023-07-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1490,432100
+2023-08-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1591,461390
+2023-09-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1567,454430
+2023-10-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1554,450660
+2023-11-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1620,469800
+2023-12-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1531,443990
+2024-01-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1582,458780
+2024-02-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1619,469510
+2024-03-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1559,452110
+2024-04-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1706,494740
+2024-05-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1716,497640
+2024-06-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1669,484010
+2024-07-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1701,493290
+2024-08-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1709,495610
+2024-09-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1771,513590
+2024-10-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1773,514170
+2024-11-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1762,510980
+2024-12-01,TRD-1004,Steady Trend 4,Apparel,BrandA,290,1852,537080
+2022-01-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1367,437440
+2022-02-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1403,448960
+2022-03-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1452,464640
+2022-04-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1463,468160
+2022-05-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1491,477120
+2022-06-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1482,474240
+2022-07-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1539,492480
+2022-08-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1551,496320
+2022-09-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1568,501760
+2022-10-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1560,499200
+2022-11-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1607,514240
+2022-12-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1564,500480
+2023-01-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1658,530560
+2023-02-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1634,522880
+2023-03-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1658,530560
+2023-04-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1601,512320
+2023-05-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1619,518080
+2023-06-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1641,525120
+2023-07-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1752,560640
+2023-08-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1706,545920
+2023-09-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1705,545600
+2023-10-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1759,562880
+2023-11-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1682,538240
+2023-12-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1881,601920
+2024-01-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1861,595520
+2024-02-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1818,581760
+2024-03-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1829,585280
+2024-04-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1874,599680
+2024-05-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1885,603200
+2024-06-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1899,607680
+2024-07-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1901,608320
+2024-08-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1943,621760
+2024-09-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1946,622720
+2024-10-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1941,621120
+2024-11-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,1951,624320
+2024-12-01,TRD-1005,Steady Trend 5,Apparel,BrandA,320,2026,648320
+2022-01-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1001,300300
+2022-02-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1155,346500
+2022-03-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1256,376800
+2022-04-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1309,392700
+2022-05-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1280,384000
+2022-06-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1175,352500
+2022-07-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1043,312900
+2022-08-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,895,268500
+2022-09-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,786,235800
+2022-10-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,749,224700
+2022-11-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,797,239100
+2022-12-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,937,281100
+2023-01-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1070,321000
+2023-02-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1265,379500
+2023-03-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1366,409800
+2023-04-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1370,411000
+2023-05-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1335,400500
+2023-06-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1296,388800
+2023-07-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1088,326400
+2023-08-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,919,275700
+2023-09-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,882,264600
+2023-10-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,868,260400
+2023-11-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,867,260100
+2023-12-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,994,298200
+2024-01-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1135,340500
+2024-02-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1320,396000
+2024-03-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1438,431400
+2024-04-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1395,418500
+2024-05-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1438,431400
+2024-06-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1304,391200
+2024-07-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1202,360600
+2024-08-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1011,303300
+2024-09-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,938,281400
+2024-10-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,894,268200
+2024-11-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,930,279000
+2024-12-01,SEA-1006,Seasonal Standard 1,Footwear,BrandB,300,1032,309600
+2022-01-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1239,433650
+2022-02-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1434,501900
+2022-03-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1540,539000
+2022-04-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1619,566650
+2022-05-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1495,523250
+2022-06-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1366,478100
+2022-07-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1147,401450
+2022-08-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,989,346150
+2022-09-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,898,314300
+2022-10-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,920,322000
+2022-11-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,990,346500
+2022-12-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1144,400400
+2023-01-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1367,478450
+2023-02-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1516,530600
+2023-03-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1627,569450
+2023-04-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1628,569800
+2023-05-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1571,549850
+2023-06-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1418,496300
+2023-07-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1234,431900
+2023-08-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1106,387100
+2023-09-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,994,347900
+2023-10-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1005,351750
+2023-11-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1119,391650
+2023-12-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1276,446600
+2024-01-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1401,490350
+2024-02-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1621,567350
+2024-03-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1710,598500
+2024-04-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1743,610050
+2024-05-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1695,593250
+2024-06-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1531,535850
+2024-07-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1341,469350
+2024-08-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1180,413000
+2024-09-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1089,381150
+2024-10-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1050,367500
+2024-11-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1171,409850
+2024-12-01,SEA-1007,Seasonal Standard 2,Footwear,BrandB,350,1365,477750
+2022-01-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1542,616800
+2022-02-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1743,697200
+2022-03-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1866,746400
+2022-04-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1867,746800
+2022-05-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1627,650800
+2022-06-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1483,593200
+2022-07-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1260,504000
+2022-08-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1104,441600
+2022-09-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1087,434800
+2022-10-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1089,435600
+2022-11-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1228,491200
+2022-12-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1414,565600
+2023-01-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1700,680000
+2023-02-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1826,730400
+2023-03-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1927,770800
+2023-04-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1924,769600
+2023-05-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1777,710800
+2023-06-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1599,639600
+2023-07-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1382,552800
+2023-08-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1218,487200
+2023-09-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1116,446400
+2023-10-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1182,472800
+2023-11-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1399,559600
+2023-12-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1529,611600
+2024-01-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1751,700400
+2024-02-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1949,779600
+2024-03-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,2037,814800
+2024-04-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1986,794400
+2024-05-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1870,748000
+2024-06-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1673,669200
+2024-07-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1487,594800
+2024-08-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1283,513200
+2024-09-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1262,504800
+2024-10-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1279,511600
+2024-11-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1435,574000
+2024-12-01,SEA-1008,Seasonal Standard 3,Footwear,BrandB,400,1638,655200
+2022-01-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1872,842400
+2022-02-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1999,899550
+2022-03-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,2124,955800
+2022-04-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,2033,914850
+2022-05-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1812,815400
+2022-06-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1584,712800
+2022-07-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1311,589950
+2022-08-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1225,551250
+2022-09-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1189,535050
+2022-10-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1303,586350
+2022-11-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1379,620550
+2022-12-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1648,741600
+2023-01-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,2016,907200
+2023-02-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,2186,983700
+2023-03-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,2218,998100
+2023-04-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,2091,940950
+2023-05-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1955,879750
+2023-06-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1785,803250
+2023-07-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1507,678150
+2023-08-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1338,602100
+2023-09-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1294,582300
+2023-10-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1353,608850
+2023-11-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1611,724950
+2023-12-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1935,870750
+2024-01-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,2078,935100
+2024-02-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,2262,1017900
+2024-03-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,2346,1055700
+2024-04-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,2207,993150
+2024-05-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,2096,943200
+2024-06-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1842,828900
+2024-07-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1576,709200
+2024-08-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1466,659700
+2024-09-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1486,668700
+2024-10-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1504,676800
+2024-11-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1671,751950
+2024-12-01,SEA-1009,Seasonal Standard 4,Footwear,BrandB,450,1997,898650
+2022-01-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2153,1076500
+2022-02-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2373,1186500
+2022-03-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2329,1164500
+2022-04-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2255,1127500
+2022-05-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1970,985000
+2022-06-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1679,839500
+2022-07-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1487,743500
+2022-08-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1344,672000
+2022-09-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1325,662500
+2022-10-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1516,758000
+2022-11-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1731,865500
+2022-12-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2008,1004000
+2023-01-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2322,1161000
+2023-02-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2465,1232500
+2023-03-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2526,1263000
+2023-04-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2299,1149500
+2023-05-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2105,1052500
+2023-06-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1800,900000
+2023-07-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1638,819000
+2023-08-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1510,755000
+2023-09-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1508,754000
+2023-10-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1721,860500
+2023-11-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1955,977500
+2023-12-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2177,1088500
+2024-01-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2470,1235000
+2024-02-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2582,1291000
+2024-03-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2603,1301500
+2024-04-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2430,1215000
+2024-05-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2233,1116500
+2024-06-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2026,1013000
+2024-07-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1710,855000
+2024-08-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1552,776000
+2024-09-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1612,806000
+2024-10-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,1777,888500
+2024-11-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2038,1019000
+2024-12-01,SEA-1010,Seasonal Standard 5,Footwear,BrandB,500,2301,1150500
+2022-01-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,487,487000
+2022-02-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,534,534000
+2022-03-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,540,540000
+2022-04-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,529,529000
+2022-05-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,511,511000
+2022-06-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,462,462000
+2022-07-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,522,522000
+2022-08-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,500,500000
+2022-09-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,488,488000
+2022-10-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,535,535000
+2022-11-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,545,545000
+2022-12-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,545,545000
+2023-01-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,494,494000
+2023-02-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,504,504000
+2023-03-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,485,485000
+2023-04-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,544,544000
+2023-05-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,535,535000
+2023-06-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,546,546000
+2023-07-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,534,534000
+2023-08-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,559,559000
+2023-09-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,549,549000
+2023-10-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,503,503000
+2023-11-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,446,446000
+2023-12-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,465,465000
+2024-01-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,453,453000
+2024-02-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,517,517000
+2024-03-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,540,540000
+2024-04-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,533,533000
+2024-05-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,552,552000
+2024-06-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,521,521000
+2024-07-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,445,445000
+2024-08-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,444,444000
+2024-09-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,468,468000
+2024-10-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,430,430000
+2024-11-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,446,446000
+2024-12-01,ARP-1011,AR-Series 1,Electronics,BrandC,1000,479,479000
+2022-01-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,564,620400
+2022-02-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,577,634700
+2022-03-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,604,664400
+2022-04-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,597,656700
+2022-05-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,662,728200
+2022-06-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,618,679800
+2022-07-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,622,684200
+2022-08-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,612,673200
+2022-09-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,620,682000
+2022-10-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,604,664400
+2022-11-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,628,690800
+2022-12-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,643,707300
+2023-01-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,589,647900
+2023-02-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,566,622600
+2023-03-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,542,596200
+2023-04-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,563,619300
+2023-05-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,583,641300
+2023-06-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,620,682000
+2023-07-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,646,710600
+2023-08-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,652,717200
+2023-09-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,648,712800
+2023-10-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,649,713900
+2023-11-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,675,742500
+2023-12-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,617,678700
+2024-01-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,596,655600
+2024-02-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,554,609400
+2024-03-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,658,723800
+2024-04-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,656,721600
+2024-05-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,626,688600
+2024-06-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,564,620400
+2024-07-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,537,590700
+2024-08-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,539,592900
+2024-09-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,597,656700
+2024-10-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,643,707300
+2024-11-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,670,737000
+2024-12-01,ARP-1012,AR-Series 2,Electronics,BrandC,1100,648,712800
+2022-01-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,665,798000
+2022-02-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,735,882000
+2022-03-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,751,901200
+2022-04-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,739,886800
+2022-05-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,719,862800
+2022-06-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,747,896400
+2022-07-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,709,850800
+2022-08-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,682,818400
+2022-09-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,672,806400
+2022-10-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,731,877200
+2022-11-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,726,871200
+2022-12-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,747,896400
+2023-01-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,795,954000
+2023-02-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,755,906000
+2023-03-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,711,853200
+2023-04-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,653,783600
+2023-05-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,612,734400
+2023-06-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,667,800400
+2023-07-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,691,829200
+2023-08-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,749,898800
+2023-09-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,717,860400
+2023-10-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,660,792000
+2023-11-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,634,760800
+2023-12-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,678,813600
+2024-01-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,659,790800
+2024-02-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,640,768000
+2024-03-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,615,738000
+2024-04-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,646,775200
+2024-05-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,685,822000
+2024-06-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,688,825600
+2024-07-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,644,772800
+2024-08-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,617,740400
+2024-09-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,679,814800
+2024-10-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,694,832800
+2024-11-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,681,817200
+2024-12-01,ARP-1013,AR-Series 3,Electronics,BrandC,1200,640,768000
+2022-01-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,807,1049100
+2022-02-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,871,1132300
+2022-03-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,827,1075100
+2022-04-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,808,1050400
+2022-05-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,807,1049100
+2022-06-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,754,980200
+2022-07-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,812,1055600
+2022-08-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,855,1111500
+2022-09-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,751,976300
+2022-10-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,780,1014000
+2022-11-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,691,898300
+2022-12-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,722,938600
+2023-01-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,784,1019200
+2023-02-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,805,1046500
+2023-03-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,792,1029600
+2023-04-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,848,1102400
+2023-05-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,830,1079000
+2023-06-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,771,1002300
+2023-07-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,777,1010100
+2023-08-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,753,978900
+2023-09-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,745,968500
+2023-10-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,898,1167400
+2023-11-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,876,1138800
+2023-12-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,791,1028300
+2024-01-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,802,1042600
+2024-02-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,754,980200
+2024-03-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,846,1099800
+2024-04-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,768,998400
+2024-05-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,791,1028300
+2024-06-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,819,1064700
+2024-07-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,837,1088100
+2024-08-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,832,1081600
+2024-09-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,760,988000
+2024-10-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,775,1007500
+2024-11-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,784,1019200
+2024-12-01,ARP-1014,AR-Series 4,Electronics,BrandC,1300,857,1114100
+2022-01-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,960,1344000
+2022-02-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,970,1358000
+2022-03-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,1011,1415400
+2022-04-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,920,1288000
+2022-05-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,895,1253000
+2022-06-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,961,1345400
+2022-07-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,1018,1425200
+2022-08-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,1042,1458800
+2022-09-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,996,1394400
+2022-10-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,977,1367800
+2022-11-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,941,1317400
+2022-12-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,838,1173200
+2023-01-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,857,1199800
+2023-02-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,873,1222200
+2023-03-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,889,1244600
+2023-04-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,876,1226400
+2023-05-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,859,1202600
+2023-06-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,828,1159200
+2023-07-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,808,1131200
+2023-08-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,793,1110200
+2023-09-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,754,1055600
+2023-10-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,817,1143800
+2023-11-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,895,1253000
+2023-12-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,939,1314600
+2024-01-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,934,1307600
+2024-02-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,866,1212400
+2024-03-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,848,1187200
+2024-04-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,853,1194200
+2024-05-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,844,1181600
+2024-06-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,842,1178800
+2024-07-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,828,1159200
+2024-08-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,856,1198400
+2024-09-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,893,1250200
+2024-10-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,867,1213800
+2024-11-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,962,1346800
+2024-12-01,ARP-1015,AR-Series 5,Electronics,BrandC,1400,995,1393000
+2022-01-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1022,511000
+2022-02-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1042,521000
+2022-03-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1062,531000
+2022-04-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1024,512000
+2022-05-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,962,481000
+2022-06-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,867,433500
+2022-07-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,853,426500
+2022-08-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,817,408500
+2022-09-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,852,426000
+2022-10-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1269,634500
+2022-11-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1294,647000
+2022-12-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1059,529500
+2023-01-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1091,545500
+2023-02-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1151,575500
+2023-03-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1113,556500
+2023-04-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1073,536500
+2023-05-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1036,518000
+2023-06-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,942,471000
+2023-07-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,904,452000
+2023-08-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,903,451500
+2023-09-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,924,462000
+2023-10-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1335,667500
+2023-11-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1340,670000
+2023-12-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1149,574500
+2024-01-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1169,584500
+2024-02-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1210,605000
+2024-03-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1229,614500
+2024-04-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1141,570500
+2024-05-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1117,558500
+2024-06-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1034,517000
+2024-07-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,978,489000
+2024-08-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,962,481000
+2024-09-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1014,507000
+2024-10-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1389,694500
+2024-11-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1391,695500
+2024-12-01,CHP-1016,Festive Spike 1,Lifestyle,BrandD,500,1240,620000
+2022-01-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1169,678020
+2022-02-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1166,676280
+2022-03-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1140,661200
+2022-04-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1086,629880
+2022-05-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1058,613640
+2022-06-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,974,564920
+2022-07-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,912,528960
+2022-08-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,873,506340
+2022-09-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,964,559120
+2022-10-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1456,844480
+2022-11-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1392,807360
+2022-12-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1132,656560
+2023-01-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1233,715140
+2023-02-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1268,735440
+2023-03-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1237,717460
+2023-04-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1213,703540
+2023-05-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1143,662940
+2023-06-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1084,628720
+2023-07-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1033,599140
+2023-08-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,971,563180
+2023-09-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1013,587540
+2023-10-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1455,843900
+2023-11-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1483,860140
+2023-12-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1231,713980
+2024-01-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1302,755160
+2024-02-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1345,780100
+2024-03-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1323,767340
+2024-04-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1285,745300
+2024-05-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1264,733120
+2024-06-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1145,664100
+2024-07-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1120,649600
+2024-08-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1092,633360
+2024-09-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1158,671640
+2024-10-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1652,958160
+2024-11-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1552,900160
+2024-12-01,CHP-1017,Festive Spike 2,Lifestyle,BrandD,580,1330,771400
+2022-01-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1250,825000
+2022-02-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1263,833580
+2022-03-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1234,814440
+2022-04-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1205,795300
+2022-05-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1142,753720
+2022-06-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1044,689040
+2022-07-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,990,653400
+2022-08-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1040,686400
+2022-09-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1057,697620
+2022-10-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1513,998580
+2022-11-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1542,1017720
+2022-12-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1295,854700
+2023-01-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1337,882420
+2023-02-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1374,906840
+2023-03-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1371,904860
+2023-04-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1320,871200
+2023-05-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1291,852060
+2023-06-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1168,770880
+2023-07-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1121,739860
+2023-08-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1080,712800
+2023-09-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1143,754380
+2023-10-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1565,1032900
+2023-11-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1673,1104180
+2023-12-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1341,885060
+2024-01-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1425,940500
+2024-02-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1476,974160
+2024-03-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1445,953700
+2024-04-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1379,910140
+2024-05-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1327,875820
+2024-06-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1303,859980
+2024-07-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1226,809160
+2024-08-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1245,821700
+2024-09-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1206,795960
+2024-10-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1766,1165560
+2024-11-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1758,1160280
+2024-12-01,CHP-1018,Festive Spike 3,Lifestyle,BrandD,660,1475,973500
+2022-01-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1367,1011580
+2022-02-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1406,1040440
+2022-03-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1385,1024900
+2022-04-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1306,966440
+2022-05-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1257,930180
+2022-06-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1171,866540
+2022-07-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1088,805120
+2022-08-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1058,782920
+2022-09-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1126,833240
+2022-10-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1589,1175860
+2022-11-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1646,1218040
+2022-12-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1382,1022680
+2023-01-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1444,1068560
+2023-02-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1488,1101120
+2023-03-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1524,1127760
+2023-04-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1421,1051540
+2023-05-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1317,974580
+2023-06-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1266,936840
+2023-07-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1220,902800
+2023-08-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1212,896880
+2023-09-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1246,922040
+2023-10-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1779,1316460
+2023-11-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1792,1326080
+2023-12-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1533,1134420
+2024-01-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1594,1179560
+2024-02-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1589,1175860
+2024-03-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1558,1152920
+2024-04-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1539,1138860
+2024-05-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1453,1075220
+2024-06-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1424,1053760
+2024-07-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1356,1003440
+2024-08-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1313,971620
+2024-09-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1301,962740
+2024-10-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1948,1441520
+2024-11-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1830,1354200
+2024-12-01,CHP-1019,Festive Spike 4,Lifestyle,BrandD,740,1624,1201760
+2022-01-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1459,1196380
+2022-02-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1483,1216060
+2022-03-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1481,1214420
+2022-04-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1463,1199660
+2022-05-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1378,1129960
+2022-06-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1272,1043040
+2022-07-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1220,1000400
+2022-08-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1122,920040
+2022-09-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1228,1006960
+2022-10-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1875,1537500
+2022-11-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1731,1419420
+2022-12-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1493,1224260
+2023-01-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1615,1324300
+2023-02-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1635,1340700
+2023-03-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1626,1333320
+2023-04-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1594,1307080
+2023-05-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1463,1199660
+2023-06-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1375,1127500
+2023-07-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1291,1058620
+2023-08-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1207,989740
+2023-09-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1376,1128320
+2023-10-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1919,1573580
+2023-11-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1890,1549800
+2023-12-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1636,1341520
+2024-01-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1715,1406300
+2024-02-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1774,1454680
+2024-03-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1760,1443200
+2024-04-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1687,1383340
+2024-05-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1602,1313640
+2024-06-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1509,1237380
+2024-07-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1437,1178340
+2024-08-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1417,1161940
+2024-09-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1440,1180800
+2024-10-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,2118,1736760
+2024-11-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,2090,1713800
+2024-12-01,CHP-1020,Festive Spike 5,Lifestyle,BrandD,820,1762,1444840
+2022-01-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,0,0
+2022-02-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,197,295500
+2022-03-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,200,300000
+2022-04-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,0,0
+2022-05-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,0,0
+2022-06-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,206,309000
+2022-07-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,0,0
+2022-08-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,0,0
+2022-09-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,192,288000
+2022-10-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,211,316500
+2022-11-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,207,310500
+2022-12-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,0,0
+2023-01-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,248,372000
+2023-02-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,208,312000
+2023-03-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,220,330000
+2023-04-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,0,0
+2023-05-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,174,261000
+2023-06-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,179,268500
+2023-07-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,235,352500
+2023-08-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,184,276000
+2023-09-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,0,0
+2023-10-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,0,0
+2023-11-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,0,0
+2023-12-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,0,0
+2024-01-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,0,0
+2024-02-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,221,331500
+2024-03-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,185,277500
+2024-04-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,216,324000
+2024-05-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,206,309000
+2024-06-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,0,0
+2024-07-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,228,342000
+2024-08-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,216,324000
+2024-09-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,201,301500
+2024-10-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,195,292500
+2024-11-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,176,264000
+2024-12-01,INT-1021,Intermittent Spare 1,Spare Parts,BrandE,1500,204,306000
+2022-01-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,266,452200
+2022-02-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,0,0
+2022-03-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,268,455600
+2022-04-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,0,0
+2022-05-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,0,0
+2022-06-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,251,426700
+2022-07-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,0,0
+2022-08-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,0,0
+2022-09-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,261,443700
+2022-10-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,210,357000
+2022-11-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,239,406300
+2022-12-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,281,477700
+2023-01-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,0,0
+2023-02-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,0,0
+2023-03-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,275,467500
+2023-04-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,0,0
+2023-05-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,0,0
+2023-06-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,0,0
+2023-07-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,299,508300
+2023-08-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,199,338300
+2023-09-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,243,413100
+2023-10-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,236,401200
+2023-11-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,253,430100
+2023-12-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,0,0
+2024-01-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,290,493000
+2024-02-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,243,413100
+2024-03-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,270,459000
+2024-04-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,0,0
+2024-05-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,0,0
+2024-06-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,0,0
+2024-07-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,0,0
+2024-08-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,222,377400
+2024-09-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,231,392700
+2024-10-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,258,438600
+2024-11-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,269,457300
+2024-12-01,INT-1022,Intermittent Spare 2,Spare Parts,BrandE,1700,0,0
+2022-01-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2022-02-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,292,554800
+2022-03-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,269,511100
+2022-04-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2022-05-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2022-06-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,302,573800
+2022-07-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2022-08-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2022-09-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,309,587100
+2022-10-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2022-11-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2022-12-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2023-01-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2023-02-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,344,653600
+2023-03-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2023-04-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2023-05-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2023-06-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,223,423700
+2023-07-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,284,539600
+2023-08-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,271,514900
+2023-09-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,289,549100
+2023-10-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,312,592800
+2023-11-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2023-12-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,299,568100
+2024-01-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,306,581400
+2024-02-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2024-03-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,306,581400
+2024-04-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2024-05-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,292,554800
+2024-06-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2024-07-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2024-08-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2024-09-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,321,609900
+2024-10-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2024-11-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,366,695400
+2024-12-01,INT-1023,Intermittent Spare 3,Spare Parts,BrandE,1900,0,0
+2022-01-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2022-02-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,1174,2348000
+2022-03-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2022-04-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,1174,2348000
+2022-05-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2022-06-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2022-07-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2022-08-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2022-09-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2022-10-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,933,1866000
+2022-11-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,667,1334000
+2022-12-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2023-01-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,812,1624000
+2023-02-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2023-03-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2023-04-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2023-05-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2023-06-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2023-07-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2023-08-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2023-09-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2023-10-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2023-11-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2023-12-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2024-01-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,828,1656000
+2024-02-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2024-03-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2024-04-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2024-05-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2024-06-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2024-07-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2024-08-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2024-09-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,926,1852000
+2024-10-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2024-11-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,808,1616000
+2024-12-01,LMP-1024,Lumpy Bulk 1,Industrial,BrandF,2000,0,0
+2022-01-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,1674,4185000
+2022-02-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2022-03-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2022-04-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,985,2462500
+2022-05-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2022-06-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2022-07-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,817,2042500
+2022-08-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,1272,3180000
+2022-09-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,1521,3802500
+2022-10-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2022-11-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2022-12-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2023-01-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2023-02-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,1530,3825000
+2023-03-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2023-04-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2023-05-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,1092,2730000
+2023-06-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2023-07-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2023-08-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2023-09-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2023-10-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2023-11-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2023-12-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2024-01-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,411,1027500
+2024-02-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2024-03-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2024-04-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2024-05-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2024-06-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,1399,3497500
+2024-07-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2024-08-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2024-09-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,1997,4992500
+2024-10-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2024-11-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0
+2024-12-01,LMP-1025,Lumpy Bulk 2,Industrial,BrandF,2500,0,0

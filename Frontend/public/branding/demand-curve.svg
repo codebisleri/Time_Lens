@@ -1,0 +1,13 @@
+<svg width="800" height="360" viewBox="0 0 800 360" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Demand curves">
+  <!-- Layered seasonal demand curves with an area fill — demand-signal motif. -->
+  <defs>
+    <linearGradient id="dc-area" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7fc4e8" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#7fc4e8" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <path d="M0 280 C 90 250, 130 300, 220 250 C 310 200, 360 260, 460 210 C 560 160, 620 220, 720 170 C 760 150, 790 158, 800 154 L 800 360 L 0 360 Z" fill="url(#dc-area)"/>
+  <path d="M0 280 C 90 250, 130 300, 220 250 C 310 200, 360 260, 460 210 C 560 160, 620 220, 720 170 C 760 150, 790 158, 800 154" stroke="#9fd2ec" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M0 320 C 100 300, 150 330, 250 300 C 350 270, 420 310, 520 280 C 620 250, 700 290, 800 260" stroke="#f7a24d" stroke-width="2" stroke-linecap="round" stroke-opacity="0.8"/>
+  <path d="M0 230 C 120 210, 180 250, 300 210 C 420 170, 520 210, 640 170 C 720 144, 770 154, 800 150" stroke="#cfe7f4" stroke-width="1.5" stroke-linecap="round" stroke-opacity="0.5" stroke-dasharray="3 6"/>
+</svg>

@@ -1,0 +1,75 @@
+# ============================================================================
+# DhishaAI Time Lens v2 — Production Requirements (Fixed)
+# ============================================================================
+# Complete dependency list for the SKU-aware forecasting engine.
+# Usage: pip install -r requirements_fixed.txt
+#
+# Versions below are pinned to the set that is INSTALLED AND VERIFIED WORKING
+# with app_v2_6.py (forecasts run end-to-end, Phase-2 CatBoost + Quantile
+# adapters tested). numpy is held at 1.24.x because the rest of the stack
+# (prophet, pmdarima, numba, statsmodels) is validated against it.
+# ============================================================================
+
+# Core data processing & numerical computing
+pandas==2.3.3
+numpy==1.24.3
+scipy==1.13.1
+
+# Time series forecasting (statsmodels is core)
+statsmodels==0.14.6
+
+# Machine learning & gradient boosting
+scikit-learn==1.6.1          # provides linear_model.QuantileRegressor (P90 adapter)
+lightgbm==4.6.0
+xgboost==2.1.4
+
+# Advanced forecasting frameworks (optional but recommended)
+prophet==1.3.0
+pmdarima==2.0.4
+
+# Data visualization & UI
+streamlit==1.50.0
+plotly==6.8.0
+
+# Holiday calendar support (India-specific)
+holidays
+
+# Database & data access
+sqlalchemy
+openpyxl
+pyarrow
+
+# Utilities
+python-dotenv
+pyyaml
+
+# ============================================================================
+# Phase 2 Enhancements
+# ============================================================================
+# CatBoost is fully supported (used by the 'catboost' adapter / blends).
+catboost==1.2.10
+
+# Neural Elasticity (LSTM) is OPTIONAL and DISABLED BY DEFAULT.
+#   * It is only attempted when TIMELENS_ENABLE_NEURAL=1 is set.
+#   * tensorflow 2.20.x (currently installed) is INCOMPATIBLE with numpy 1.24
+#     and its import can hang — keep neural disabled until you either:
+#       (a) downgrade to a numpy-1.24-compatible TF:  pip install "tensorflow==2.15.*"
+#       (b) or upgrade numpy>=1.26 and re-validate the rest of the stack.
+# tensorflow==2.15.*   # uncomment + install only after validating the env
+
+# ============================================================================
+# REST API Bridge (api.py) — exposes the engine to the Next.js frontend
+# ============================================================================
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+bcrypt==4.2.1                # password hashing for /auth endpoints
+
+# Optional Advanced Features
+
+# tsfresh==0.21.1
+# dowhy
+# dtaidistance
+# fpdf2
+# graphviz
+# electron

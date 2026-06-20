@@ -1,0 +1,29 @@
+<svg width="800" height="300" viewBox="0 0 800 300" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Demand signal">
+  <!-- Demand-signal bars with an overlaid forecast trend — KPI / data-flow motif. -->
+  <defs>
+    <linearGradient id="ds-bar" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7fc4e8" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#7fc4e8" stop-opacity="0.10"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#ds-bar)">
+    <rect x="40"  y="170" width="34" height="90" rx="3"/>
+    <rect x="100" y="140" width="34" height="120" rx="3"/>
+    <rect x="160" y="190" width="34" height="70" rx="3"/>
+    <rect x="220" y="120" width="34" height="140" rx="3"/>
+    <rect x="280" y="150" width="34" height="110" rx="3"/>
+    <rect x="340" y="100" width="34" height="160" rx="3"/>
+  </g>
+  <!-- forecast bars (accent, hollow) -->
+  <g fill="#ef7602" fill-opacity="0.18" stroke="#f7a24d" stroke-opacity="0.6" stroke-width="1.5">
+    <rect x="400" y="110" width="34" height="150" rx="3"/>
+    <rect x="460" y="90"  width="34" height="170" rx="3"/>
+    <rect x="520" y="120" width="34" height="140" rx="3"/>
+    <rect x="580" y="80"  width="34" height="180" rx="3"/>
+    <rect x="640" y="100" width="34" height="160" rx="3"/>
+    <rect x="700" y="70"  width="34" height="190" rx="3"/>
+  </g>
+  <!-- trend line over the bars -->
+  <path d="M57 165 L117 135 L177 185 L237 115 L297 145 L357 95 L417 105 L477 85 L537 115 L597 75 L657 95 L717 65" stroke="#f7a24d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <line x1="20" y1="260" x2="780" y2="260" stroke="#bfe0f2" stroke-opacity="0.2" stroke-width="1"/>
+</svg>

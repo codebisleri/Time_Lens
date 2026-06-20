@@ -1,0 +1,54 @@
+# ── Time Lens — repository ignore (D.7) ──────────────────────────────────────
+# Keeps generated/huge artifacts out of git so `git add .` is safe to run.
+
+# Node / Next.js (root + Frontend)
+node_modules/
+**/node_modules/
+.next/
+**/.next/
+out/
+**/out/
+
+# Electron build output
+dist-desktop/
+**/dist-desktop/
+Frontend/dist/
+
+# Python backend — PyInstaller output, build temp, virtualenv, caches
+Backend/dist/
+Backend/build/
+Backend/venv/
+Backend/.venv/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Databases / runtime data (created in the user-data dir at runtime)
+*.db
+*.sqlite
+*.sqlite3
+
+# Large release binaries — keep the docs/notes, drop the installers
+*.exe
+*.dmg
+*.zip
+*.7z
+*.blockmap
+*.app/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.log
+
+# Assistant-local project memory (not for distribution)
+.claude/
