@@ -78,6 +78,25 @@ jobs:
         working-directory: Frontend
         run: ls -la dist-desktop || true
 
+      # Assert the Next standalone landed INSIDE each .app bundle (the afterPack
+      # hook must target Contents/Resources/web on macOS — see electron/after-pack.js).
+      - name: Verify web/server.js inside Time Lens.app
+        working-directory: Frontend
+        run: |
+          set -e
+          mapfile -t apps < <(find dist-desktop -maxdepth 2 -name "Time Lens.app" -type d)
+          [ "${#apps[@]}" -gt 0 ] || { echo "no Time Lens.app found under dist-desktop"; exit 1; }
+          for app in "${apps[@]}"; do
+            res="$app/Contents/Resources/web"
+            echo "checking $res"
+            test -f "$res/server.js"       || { echo "MISSING $res/server.js"; ls -la "$app/Contents/Resources" || true; exit 1; }
+            test -d "$res/node_modules/next" || { echo "MISSING $res/node_modules/next"; exit 1; }
+            test -d "$res/.next/static"     || { echo "MISSING $res/.next/static"; exit 1; }
+            test -d "$res/public"          || { echo "MISSING $res/public"; exit 1; }
+            echo "OK — $res/server.js present"
+          done
+          echo "verified web bundle inside ${#apps[@]} app bundle(s)"
+
       # ── Artifacts ───────────────────────────────────────────────────────────
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@v4

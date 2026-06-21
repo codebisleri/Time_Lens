@@ -20,7 +20,23 @@ exports.default = async function afterPack(context) {
   const standalone = path.join(projectDir, ".next", "standalone");
   const staticSrc = path.join(projectDir, ".next", "static");
   const publicSrc = path.join(projectDir, "public");
-  const dest = path.join(context.appOutDir, "resources", "web");
+
+  // Resolve the app's Resources dir PER PLATFORM. On Windows/Linux it is
+  // `<appOutDir>/resources`. On macOS the app is a bundle and Resources live
+  // INSIDE it: `<appOutDir>/<ProductName>.app/Contents/Resources`. Writing to
+  // `<appOutDir>/resources` on macOS drops the files OUTSIDE the .app, so the
+  // DMG/zip (which pack only the .app) ship without web/server.js — the exact
+  // "Next server missing at .../Resources/web/server.js" macOS failure.
+  const isMac = context.electronPlatformName === "darwin";
+  const productName =
+    (context.packager &&
+      context.packager.appInfo &&
+      context.packager.appInfo.productFilename) ||
+    "Time Lens";
+  const resourcesDir = isMac
+    ? path.join(context.appOutDir, `${productName}.app`, "Contents", "Resources")
+    : path.join(context.appOutDir, "resources");
+  const dest = path.join(resourcesDir, "web");
 
   if (!existsSync(standalone)) {
     throw new Error(
@@ -29,14 +45,14 @@ exports.default = async function afterPack(context) {
   }
   if (!existsSync(path.join(standalone, "node_modules"))) {
     throw new Error(
-      `[after-pack] ${standalone}\\node_modules is missing — the standalone build is incomplete.`,
+      `[after-pack] ${path.join(standalone, "node_modules")} is missing — the standalone build is incomplete.`,
     );
   }
   // Validate the SOURCE entrypoint up front — never copy from an incomplete
   // standalone and only discover it at the post-copy check.
   if (!existsSync(path.join(standalone, "server.js"))) {
     throw new Error(
-      `[after-pack] ${standalone}\\server.js is missing — re-run \`npm run build:web\`.`,
+      `[after-pack] ${path.join(standalone, "server.js")} is missing — re-run \`npm run build:web\`.`,
     );
   }
 
