@@ -41,6 +41,9 @@ Backend/.venv/
 .env
 .env.*
 !.env.example
+# Committed production defaults for the desktop build (no secrets) — needed so
+# the macOS CI build (which has no .env.local) doesn't fall back to mock mode.
+!.env.production
 
 # Editor / OS
 .DS_Store
