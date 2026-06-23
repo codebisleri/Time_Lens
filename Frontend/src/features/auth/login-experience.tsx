@@ -76,7 +76,7 @@ export function LoginExperience() {
               transition={{ duration: 0.6, delay: 0.32 }}
               className="text-sm font-semibold uppercase tracking-[0.34em] text-[#FF9B3D]"
             >
-              AI Forecasting Platform
+              Demand Forecasting &amp; Planning Platform
             </motion.p>
 
             {/* Predict · Plan · Optimize — staggered words (no metrics). */}

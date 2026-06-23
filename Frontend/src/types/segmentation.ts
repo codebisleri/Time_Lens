@@ -123,6 +123,10 @@ export interface SegmentationRunPayload extends SegmentationThresholds {
   datasetId?: string;
   validatedBy?: string;
   notes?: string;
+  /** Phase X.D · Task 3 — performance metric (numeric column) for contribution.
+   *  Forward-compatible: the current backend auto-detects the column and ignores
+   *  this key, so no API contract changes. */
+  metricColumn?: string;
 }
 
 export interface SegmentationRun {

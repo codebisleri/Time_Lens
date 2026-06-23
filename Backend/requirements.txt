@@ -1,0 +1,64 @@
+# ============================================================================
+# DhishaAI Time Lens v2 — Requirements
+# ============================================================================
+# Canonical install file referenced by the Dockerfile, setup_production_env.{sh,bat},
+# and the standard `pip install -r requirements.txt` flow. It MIRRORS the
+# CI-validated pinned set in requirements_fixed.txt (the macOS build workflow
+# installs requirements_fixed.txt). Keep the two in sync; requirements_fixed.txt
+# is the source of truth for the exact verified versions.
+#
+# NOTE — Scenario Causal (DoWhy): the causal-effect feature needs `dowhy` and
+# `graphviz` (Python pkg only; no system binary required — we emit DOT source).
+# They are OPTIONAL and left commented to match the validated base set; the app
+# degrades gracefully (Causal tab shows "Causal analysis unavailable") when
+# absent. Uncomment the two lines at the bottom to enable the causal feature.
+# ============================================================================
+
+# Core data processing & numerical computing
+pandas==2.3.3
+numpy==1.24.3
+scipy==1.13.1
+
+# Time series forecasting (statsmodels is core)
+statsmodels==0.14.6
+
+# Machine learning & gradient boosting
+scikit-learn==1.6.1          # provides linear_model.QuantileRegressor (P90 adapter)
+lightgbm==4.6.0
+xgboost==2.1.4
+
+# Advanced forecasting frameworks (optional but recommended)
+prophet==1.3.0
+pmdarima==2.0.4
+
+# Data visualization & UI
+streamlit==1.50.0
+plotly==6.8.0
+
+# Holiday calendar support (India-specific)
+holidays
+
+# Database & data access
+sqlalchemy
+openpyxl
+pyarrow
+
+# Utilities
+python-dotenv
+pyyaml
+
+# Phase 2 — CatBoost (used by the 'catboost' adapter / blends)
+catboost==1.2.10
+
+# REST API Bridge (api.py) — exposes the engine to the Next.js frontend
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+bcrypt==4.2.1                # password hashing for /auth endpoints
+
+# Optional Advanced Features (uncomment to enable)
+# tsfresh==0.21.1
+# dowhy            # Scenario → Causal Effect Estimation
+# graphviz         # Scenario → causal DAG (DOT source only)
+# dtaidistance
+# fpdf2

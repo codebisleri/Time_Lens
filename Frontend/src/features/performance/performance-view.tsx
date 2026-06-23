@@ -14,6 +14,7 @@ import { Field, Select } from "@/features/data/controls";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/lib/utils/format";
 import { downloadFile } from "@/lib/utils/download";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type { ForecastMetricRow, ForecastRunMetrics } from "@/types/forecast";
 import { WorkflowLock } from "@/features/workflow/workflow-lock";
 import { useWorkflowStatus } from "@/features/workflow/use-workflow-status";
@@ -88,6 +89,7 @@ function GroupTable({
   label: string;
   groups: GroupPerf[];
 }) {
+  const { plural: levelPlural } = useForecastLevel();
   const sorted = [...groups].sort(
     (a, b) => (a.weightedWmape ?? Infinity) - (b.weightedWmape ?? Infinity),
   );
@@ -100,7 +102,7 @@ function GroupTable({
             <th className={cn(TH, "text-right")}>WMAPE</th>
             <th className={cn(TH, "text-right")}>SMAPE</th>
             <th className={cn(TH, "text-right")}>Bias</th>
-            <th className={cn(TH, "text-right")}>SKUs</th>
+            <th className={cn(TH, "text-right")}>{levelPlural}</th>
             <th className={cn(TH, "text-right")}>Volume</th>
             <th className={cn(TH, "text-right")}>Coverage</th>
           </tr>
@@ -146,6 +148,7 @@ function SegmentTab({ data }: { data: ForecastRunMetrics }) {
 }
 
 function BrandTab({ data }: { data: ForecastRunMetrics }) {
+  const { plural: levelPlural } = useForecastLevel();
   const groups = useMemo(() => data.groups.brand.map(toGroupPerf), [data]);
   const brands = useMemo(() => groups.map((g) => g.key).sort(), [groups]);
   const [brand, setBrand] = useState(brands[0] ?? "");
@@ -186,7 +189,7 @@ function BrandTab({ data }: { data: ForecastRunMetrics }) {
               </p>
             </div>
             <div className="rounded-lg border border-border bg-secondary/30 p-3">
-              <p className="text-xs text-muted-foreground">SKUs evaluated</p>
+              <p className="text-xs text-muted-foreground">{levelPlural} evaluated</p>
               <p className="mt-1 text-lg font-semibold tabular-nums">
                 {formatNumber(sel?.skuCount ?? 0)}
               </p>
@@ -206,6 +209,7 @@ function BrandTab({ data }: { data: ForecastRunMetrics }) {
 }
 
 function BrandSegmentTab({ data }: { data: ForecastRunMetrics }) {
+  const { plural: levelPlural } = useForecastLevel();
   const worst = useMemo(
     () =>
       [...data.groups.brandSegment]
@@ -232,7 +236,7 @@ function BrandSegmentTab({ data }: { data: ForecastRunMetrics }) {
               <th className={cn(TH, "text-right")}>WMAPE</th>
               <th className={cn(TH, "text-right")}>SMAPE</th>
               <th className={cn(TH, "text-right")}>Bias</th>
-              <th className={cn(TH, "text-right")}>SKUs</th>
+              <th className={cn(TH, "text-right")}>{levelPlural}</th>
               <th className={cn(TH, "text-right")}>Volume</th>
               <th className={cn(TH, "text-right")}>Error contribution</th>
             </tr>
@@ -297,6 +301,7 @@ function StatusBox({
 }
 
 function SkuTab({ rows }: { rows: ForecastMetricRow[] }) {
+  const { label: levelLabel } = useForecastLevel();
   const counts = useMemo(() => {
     const total = rows.length || 1;
     const good = rows.filter((r) => r.band === "Good").length;
@@ -350,7 +355,7 @@ function SkuTab({ rows }: { rows: ForecastMetricRow[] }) {
       </div>
 
       <ChartCard
-        title="SKU portfolio — volume vs forecast quality"
+        title={`${levelLabel} portfolio — volume vs forecast quality`}
         description="Bottom-left is ideal: high volume, low WMAPE."
       >
         <SkuQualityScatter rows={rows} />
@@ -360,7 +365,7 @@ function SkuTab({ rows }: { rows: ForecastMetricRow[] }) {
         <table className="w-full border-collapse">
           <thead>
             <tr className="border-b border-border bg-card">
-              <th className={TH}>SKU</th>
+              <th className={TH}>{levelLabel}</th>
               <th className={TH}>Brand</th>
               <th className={TH}>Segment</th>
               <th className={cn(TH, "text-right")}>Volume</th>
@@ -415,6 +420,7 @@ function SkuTab({ rows }: { rows: ForecastMetricRow[] }) {
 export function PerformanceView() {
   const workflow = useWorkflowStatus();
   const perf = usePerformance();
+  const { label: levelLabel } = useForecastLevel();
   const [tab, setTab] = useState<Tab>("Segment");
 
   const rows = useMemo<ForecastMetricRow[]>(
@@ -444,11 +450,11 @@ export function PerformanceView() {
   return (
     <PageShell
       title="Performance Analytics"
-      description="Forecast accuracy diagnostics — WMAPE · SMAPE · bias · coverage by segment, brand and SKU."
+      description={`Forecast accuracy diagnostics — WMAPE · SMAPE · bias · coverage by segment, brand and ${levelLabel}.`}
       actions={
         rows.length ? (
           <Button variant="outline" onClick={() => downloadPerformanceCsv(rows)}>
-            <Download className="size-4" /> Per-SKU performance (CSV)
+            <Download className="size-4" /> Per-{levelLabel.toLowerCase()} performance (CSV)
           </Button>
         ) : undefined
       }
@@ -456,7 +462,7 @@ export function PerformanceView() {
       <WorkflowHero
         step="Step 7 · Performance"
         title="Forecast Accuracy Diagnostics"
-        subtitle="Backtest accuracy across the latest run — WMAPE, SMAPE, bias, and coverage by segment, brand, and SKU."
+        subtitle={`Backtest accuracy across the latest run — WMAPE, SMAPE, bias, and coverage by segment, brand, and ${levelLabel}.`}
         icon={Gauge}
         variant="grid"
         status={
@@ -508,7 +514,7 @@ export function PerformanceView() {
                     : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
                 )}
               >
-                {t}
+                {t === "SKU" ? levelLabel : t}
               </button>
             ))}
           </div>

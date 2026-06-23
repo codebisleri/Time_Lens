@@ -8,6 +8,7 @@ import { useThemeMode } from "@/lib/theme/use-theme-mode";
 import { readCssVar } from "@/lib/theme/theme-config";
 import { Field, Select } from "@/features/data/controls";
 import { formatDate, formatNumber } from "@/lib/utils/format";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type { SubmissionRow } from "@/types/submission";
 
 function num(v: number | null): string {
@@ -21,6 +22,7 @@ function num(v: number | null): string {
  */
 export function SubmissionDrilldown({ rows }: { rows: SubmissionRow[] }) {
   const { resolvedMode } = useThemeMode();
+  const { label: levelLabel } = useForecastLevel();
   const skus = useMemo(
     () => Array.from(new Set((Array.isArray(rows) ? rows : []).map((r) => r.sku))).sort(),
     [rows],
@@ -110,12 +112,12 @@ export function SubmissionDrilldown({ rows }: { rows: SubmissionRow[] }) {
   return (
     <Card>
       <CardContent className="space-y-4 pt-6">
-        <Field label="Inspect SKU">
+        <Field label={`Inspect ${levelLabel}`}>
           <Select
             value={active}
             onChange={setSku}
             options={skus.map((s) => ({ value: s, label: s }))}
-            ariaLabel="Inspect SKU"
+            ariaLabel={`Inspect ${levelLabel}`}
           />
         </Field>
 

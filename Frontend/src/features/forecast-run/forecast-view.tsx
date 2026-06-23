@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Gauge, TrendingUp } from "lucide-react";
 import { useAsync } from "@/lib/hooks";
-import { formatForecastLevel } from "@/lib/utils/format";
+import { formatForecastLevel, pluralizeLevel } from "@/lib/utils/format";
 import { routes } from "@/lib/constants/routes";
 import { dataService, forecastService, segmentationService, workflowService } from "@/lib/api/services";
 import { WorkflowHero, HeroStatusPill } from "@/features/workflow/workflow-hero";
@@ -28,11 +28,17 @@ import {
 } from "./forecast-run-config";
 import { ForecastResultsPanel } from "./forecast-results-panel";
 import { SingleSkuResultsPanel } from "./single-sku-results-panel";
+import { TopDownDialog, type TopDownCandidate } from "./top-down-dialog";
+import { TopDownBadge } from "./top-down-indicator";
+import { useForecastStore } from "@/lib/stores";
+import { Card, CardContent } from "@/components/ui/card";
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 // Poll faster than the backend heartbeat cadence (~1.2s) so stage/progress
 // updates surface promptly and the run never looks frozen.
 const POLL_MS = 1500;
+// Phase X.Q · Task 2 — synthetic key for the computed Segment dynamic-filter column.
+const SEGMENT_KEY = "__segment__";
 
 // Persist the active run so a page refresh can reconnect to the in-flight job
 // (the worker keeps running server-side). No artificial time cap — long runs
@@ -104,6 +110,30 @@ export function ForecastView() {
       return formatForecastLevel(cfg.forecastLevelCols?.[0] ?? "Group");
     return formatForecastLevel(cfg.skuCol);
   }, [dataset.data]);
+  const levelPlural = useMemo(() => pluralizeLevel(levelLabel), [levelLabel]);
+
+  // Phase X.Q · Task 2 — per-forecast-level categorical attributes drive the
+  // dynamic filters. Read-only; if the endpoint is unavailable (older backend)
+  // we fall back to Segment-only filtering so nothing breaks.
+  const levelAttrs = useAsync(
+    () =>
+      seg.data?.datasetId
+        ? dataService.levelAttributes(seg.data.datasetId).catch(() => null)
+        : Promise.resolve(null),
+    [seg.data?.datasetId],
+  );
+  const attrsBySku = useMemo(() => {
+    const m = new Map<string, Record<string, string>>();
+    for (const e of levelAttrs.data?.entities ?? []) m.set(e.entity, e.attrs ?? {});
+    return m;
+  }, [levelAttrs.data]);
+  const attrColumns = useMemo(
+    () => [
+      ...(levelAttrs.data?.columns ?? []),
+      { key: SEGMENT_KEY, label: "Segment" },
+    ],
+    [levelAttrs.data],
+  );
 
   const [config, setConfig] = useState<RunConfig>(DEFAULT_CONFIG);
   const [phase, setPhase] = useState<"idle" | "running" | "error">("idle");
@@ -112,6 +142,17 @@ export function ForecastView() {
   const [jobMessage, setJobMessage] = useState("");
   const [runError, setRunError] = useState<string | null>(null);
   const [singleSkuResult, setSingleSkuResult] = useState<SingleSkuResult | null>(null);
+  // Phase Y.1 / X.J — Top-Down recommendation dialog (only when qualifying items exist).
+  const [topDownOpen, setTopDownOpen] = useState(false);
+  const [topDownQualifying, setTopDownQualifying] = useState<TopDownCandidate[]>([]);
+  const setTopDownEnabled = useForecastStore((s) => s.setTopDownEnabled);
+  const topDownEnabled = useForecastStore((s) => s.topDownEnabled);
+  // Phase X.Q · Task 3 — the global benchmark algorithm set (persisted).
+  const benchmarkAlgos = useForecastStore((s) => s.benchmarkAlgos);
+  const setBenchmarkAlgos = useForecastStore((s) => s.setBenchmarkAlgos);
+  // Phase X.X.2 · Task 2 — per-segment SECONDARY models (persisted) → sent as
+  // extra candidates so they join the WMAPE competition on the next run.
+  const segmentOverrides = useForecastStore((s) => s.segmentOverrides);
   const cancelled = useRef(false);
 
   useEffect(() => {
@@ -119,12 +160,20 @@ export function ForecastView() {
     return () => { cancelled.current = true; };
   }, []);
 
-  // Seed the algorithm competition with the recommended set once it loads.
+  // Seed the global benchmark competition once: from the PERSISTED global set if
+  // present, otherwise the backend `recommended` set (Phase X.Q · Task 3).
   useEffect(() => {
-    if (algorithms.data && config.compareAlgos.length === 0) {
-      setConfig((c) => ({ ...c, compareAlgos: [...algorithms.data!.recommended] }));
-    }
-  }, [algorithms.data, config.compareAlgos.length]);
+    if (!algorithms.data || config.compareAlgos.length > 0) return;
+    const seed = benchmarkAlgos && benchmarkAlgos.length
+      ? benchmarkAlgos
+      : [...algorithms.data.recommended];
+    setConfig((c) => ({ ...c, compareAlgos: seed }));
+  }, [algorithms.data, config.compareAlgos.length, benchmarkAlgos]);
+
+  // Persist any change to the global benchmark set so it survives refresh/restart.
+  useEffect(() => {
+    if (config.compareAlgos.length) setBenchmarkAlgos(config.compareAlgos);
+  }, [config.compareAlgos, setBenchmarkAlgos]);
 
   // Streamlit's Pick mode defaults the SKU multiselect to the first 5 SKUs.
   // Seed once on initial load (no filters yet); leaves the brand/segment
@@ -141,8 +190,16 @@ export function ForecastView() {
   }, [dataset.data?.config?.horizon]);
 
   const skuOptions = useMemo(
-    () => (seg.data?.skus ?? []).map((s) => ({ sku: s.sku, brand: s.brand, segment: s.segment })),
-    [seg.data],
+    () =>
+      (seg.data?.skus ?? []).map((s) => ({
+        sku: s.sku,
+        brand: s.brand,
+        segment: s.segment,
+        // Merge dataset categorical attrs with the computed Segment so every
+        // dynamic filter column resolves from one place.
+        attrs: { ...(attrsBySku.get(s.sku) ?? {}), [SEGMENT_KEY]: s.segment },
+      })),
+    [seg.data, attrsBySku],
   );
   const brandOptions = useMemo(
     () => Array.from(new Set(skuOptions.map((s) => s.brand).filter(Boolean))) as string[],
@@ -226,7 +283,7 @@ export function ForecastView() {
   // Single-SKU Multi-Model Competition — dedicated single-series engine endpoint.
   const runSingleSku = useCallback(async () => {
     if (config.skuIds.length === 0) {
-      setRunError("Select a SKU to run the competition.");
+      setRunError(`Select a ${levelLabel.toLowerCase()} to run the competition.`);
       setPhase("error");
       return;
     }
@@ -235,6 +292,7 @@ export function ForecastView() {
       setPhase("error");
       return;
     }
+    cancelled.current = false; // fresh run — clear any prior cancel
     setPhase("running");
     setProgress(0);
     setRunError(null);
@@ -281,6 +339,7 @@ export function ForecastView() {
     }
     const effectiveMode = config.selectionMode;
     const effectiveSkuIds = effectiveMode === "pick" ? config.skuIds : [];
+    cancelled.current = false; // fresh run — clear any prior cancel
     setPhase("running");
     setProgress(0);
     setJobMessage("");
@@ -296,10 +355,18 @@ export function ForecastView() {
         periods: config.periods,
         limit: config.limit,
         selectionMode: effectiveMode,
-        brands: config.brands,
-        segments: config.segments,
+        // Phase X.H — in "pick" mode brand/segment are VISIBLE-LIST filters only;
+        // the forecast set is EXACTLY the checked SKUs. Don't send the filters
+        // (they'd narrow the backend pool); send them only for sample/all modes.
+        brands: effectiveMode === "pick" ? [] : config.brands,
+        segments: effectiveMode === "pick" ? [] : config.segments,
         samplePerStrategy: config.samplePerStrategy,
         compareAlgos: config.compareAlgos,
+        segmentSecondary: Object.fromEntries(
+          Object.entries(segmentOverrides)
+            .filter(([, ov]) => ov.extras?.length)
+            .map(([seg, ov]) => [seg, ov.extras]),
+        ),
         cvMode: config.cvMode,
         reconcile: config.reconcile,
         useGlobal: config.useGlobal,
@@ -316,6 +383,86 @@ export function ForecastView() {
       setPhase("error");
     }
   }, [config, runSingleSku, pollUntilDone, finishPortfolio]);
+
+  // Phase Y.1 — "Run forecasts" opens the Top-Down decision dialog first; the
+  // run only starts after the planner chooses. Both choices proceed; the choice
+  // is recorded in the forecast store. Modal shows once per click.
+  const requestRun = useCallback(() => {
+    // Phase X.H/X.J — "Pick Specific Items" requires an explicit selection.
+    if (
+      config.forecastMode === "portfolio" &&
+      config.selectionMode === "pick" &&
+      config.skuIds.length === 0
+    ) {
+      setRunError(`Please select at least one ${levelLabel.toLowerCase()}.`);
+      setPhase("error");
+      return;
+    }
+    // Phase X.Q · Task 9 — recommend Top-Down ONLY for entities with HIGH
+    // hold-out error (WMAPE > 20%) that are Volatile Low / Intermittent / Short
+    // History. WMAPE comes from the latest run's per-entity metrics; with no
+    // prior metrics nothing qualifies and the run starts directly (so the dialog
+    // is no longer aggressive — it appears only when there is real evidence).
+    const wmapeBySku = new Map<string, number>();
+    for (const r of metrics.data?.skus ?? []) {
+      if (r.testWmape == null) continue;
+      // Normalise a fraction (0–1) to a percent; leave an existing percent as-is.
+      wmapeBySku.set(r.sku, r.testWmape <= 1 ? r.testWmape * 100 : r.testWmape);
+    }
+    const intermBySku = new Map<string, string>();
+    for (const s of seg.data?.skus ?? []) {
+      intermBySku.set(s.sku, (s.intermittency ?? "").toLowerCase());
+    }
+    const isVolatileTarget = (segment: string, sku: string): boolean => {
+      const seg2 = (segment ?? "").toLowerCase();
+      const it = intermBySku.get(sku) ?? "";
+      return (
+        /volatile low/.test(seg2) ||
+        /short history/.test(seg2) ||
+        it === "intermittent" ||
+        it === "lumpy"
+      );
+    };
+
+    const allSkus = seg.data?.skus ?? [];
+    const selecting =
+      config.selectionMode === "pick" ? new Set(config.skuIds) : null;
+    const candidates = selecting ? allSkus.filter((s) => selecting.has(s.sku)) : allSkus;
+    const qualifying: TopDownCandidate[] = [];
+    for (const s of candidates) {
+      const pct = wmapeBySku.get(s.sku);
+      if (pct == null || pct <= 20) continue; // WMAPE ≤ 20% ⇒ do NOT recommend
+      if (!isVolatileTarget(s.segment, s.sku)) continue;
+      qualifying.push({ sku: s.sku, segment: s.segment, wmape: pct, reason: "High forecast error" });
+    }
+    if (qualifying.length === 0) {
+      void run(); // no qualifying entities → run normally, no popup
+      return;
+    }
+    setTopDownQualifying(qualifying);
+    setTopDownOpen(true);
+  }, [config.forecastMode, config.selectionMode, config.skuIds, levelLabel, seg.data, metrics.data, run]);
+
+  // Phase Y.3 · Task 6 — Cancel an in-flight run, frontend-side: stop polling
+  // (pollUntilDone bails on `cancelled.current`), clear loading state, and return
+  // to the Run state. No page refresh; no backend cancel endpoint exists today.
+  const cancelRun = useCallback(() => {
+    cancelled.current = true;
+    saveActiveJob(null);
+    setPhase("idle");
+    setProgress(0);
+    setJobStatus("");
+    setJobMessage("");
+    toast.message("Forecast cancelled");
+  }, []);
+  const resolveTopDown = useCallback(
+    (enabled: boolean) => {
+      setTopDownEnabled(enabled);
+      setTopDownOpen(false);
+      void run();
+    },
+    [run, setTopDownEnabled],
+  );
 
   // Reconnect to an in-flight run after a page refresh (Part 3).
   const resumed = useRef(false);
@@ -366,7 +513,7 @@ export function ForecastView() {
       <WorkflowHero
         step="Step 4 · Forecast"
         title="Multi-Model Forecast Engine"
-        subtitle="Route per SKU, compete algorithms, pick a champion — with train/test diagnostics and exports"
+        subtitle={`Route per ${levelLabel.toLowerCase()}, compete algorithms, pick a champion — with train/test diagnostics and exports`}
         icon={TrendingUp}
         variant="horizon"
         status={
@@ -386,6 +533,22 @@ export function ForecastView() {
         />
       ) : (
         <>
+          {/* Phase Y.2 — Forecast Mode summary + badge (above the Run Status area).
+              Reflects the planner's Top-Down choice for the whole run. */}
+          <Card>
+            <CardContent className="flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                  Forecast Mode
+                </p>
+                <p className="mt-0.5 text-sm font-semibold text-foreground">
+                  {topDownEnabled ? "Top-Down Distribution" : `Direct ${levelLabel} Forecasting`}
+                </p>
+              </div>
+              <TopDownBadge enabled={topDownEnabled} />
+            </CardContent>
+          </Card>
+
           <div id="configuration" className="scroll-mt-24">
             <ForecastRunConfig
               config={config}
@@ -394,7 +557,10 @@ export function ForecastView() {
               brandOptions={brandOptions}
               segmentOptions={segmentOptions}
               skuOptions={skuOptions}
-              onRun={run}
+              onRun={requestRun}
+              onCancel={cancelRun}
+              levelPlural={levelPlural}
+              attrColumns={attrColumns}
               running={phase === "running"}
               progress={progress}
               jobStatus={jobStatus}
@@ -402,6 +568,17 @@ export function ForecastView() {
               savedHorizon={savedHorizon}
             />
           </div>
+
+          <TopDownDialog
+            open={topDownOpen}
+            qualifying={topDownQualifying}
+            levelLabel={levelLabel}
+            levelPlural={levelPlural}
+            onEnable={() => resolveTopDown(true)}
+            onContinueWithout={() => resolveTopDown(false)}
+            onOpenChange={setTopDownOpen}
+          />
+
           <span id="execution" className="block scroll-mt-24" aria-hidden />
 
           {phase === "error" ? (
@@ -420,7 +597,7 @@ export function ForecastView() {
               <EmptyState
                 icon={Gauge}
                 title="No competition yet"
-                description="Pick a SKU and models above, then click “Run forecasts”."
+                description={`Pick a ${levelLabel.toLowerCase()} and models above, then click “Run forecasts”.`}
               />
             )
           ) : phase === "running" ? (

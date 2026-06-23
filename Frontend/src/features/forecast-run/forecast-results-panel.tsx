@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, Layers, PackageSearch, Search, TrendingUp } from "lucide-react";
+import { Download, Layers, PackageSearch, Search, Sparkles, TrendingUp } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,11 +16,15 @@ import { routes } from "@/lib/constants/routes";
 import { forecastService } from "@/lib/api/services";
 import { useForecastDetail } from "@/features/forecast/hooks/use-forecast-detail";
 import { ForecastTrendBandChart } from "@/features/forecast/forecast-trend-band-chart";
+import { ForecastYoYChart } from "@/features/forecast/forecast-yoy-chart";
 import { Select } from "@/features/data/controls";
 import type { ForecastBandPoint } from "@/features/forecast/hooks/use-forecast-trend";
 import type { ForecastDetail, ForecastMetricRow, ForecastRunMetrics } from "@/types/forecast";
 import { ContinueButton } from "@/features/workflow/continue-button";
 import { ReconciliationSection } from "./reconciliation-section";
+import { TopDownBadge } from "./top-down-indicator";
+import { ForecastExplainPanel } from "@/features/forecast-explain/forecast-explain-panel";
+import { useForecastStore } from "@/lib/stores";
 
 const ALL = "__all__";
 const pct = (v: number | null) => (v == null ? "—" : `${v.toFixed(1)}%`);
@@ -35,6 +39,21 @@ const deltaPct = (a: number, b: number | null) =>
   b == null || b === 0 ? null : ((a - b) / b) * 100;
 const signed = (v: number | null) => (v == null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(1)}%`);
 
+// Phase X.S · Task 8 — compact array preview for the read-only debug mode.
+function arr(xs: (number | null | undefined)[] | undefined, max = 24): string {
+  if (!xs || !xs.length) return "[]";
+  const shown = xs.slice(0, max).map((v) => (v == null ? "·" : Math.round(v)));
+  return `[${shown.join(", ")}${xs.length > max ? ", …" : ""}]`;
+}
+function DebugRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-2">
+      <span className="shrink-0 font-sans text-foreground sm:w-56">{label}:</span>
+      <span className="break-all">{value}</span>
+    </div>
+  );
+}
+
 /**
  * §5/§6 — Forecast Interpretation cards for the inspected SKU, DERIVED in the
  * frontend from the forecast detail (history actuals + forecast). Mirrors the
@@ -42,18 +61,22 @@ const signed = (v: number | null) => (v == null ? "—" : `${v > 0 ? "+" : ""}${
  * month average, plus seasonality + trend read-outs. No fabricated data — every
  * number comes from the engine's own historical + forecast series.
  */
-function SkuInterpretation({ detail }: { detail: ForecastDetail }) {
-  const view = useMemo(() => {
-    const series = detail.series ?? [];
-    const hist = series
-      .filter((p) => p.actual != null)
-      .map((p) => ({ date: p.date, v: p.actual as number }));
-    const fc = series
-      .filter((p) => p.forecast != null)
-      .map((p) => ({ date: p.date, v: p.forecast as number }));
-    if (!fc.length) return null;
+function SkuInterpretation({ detail, model }: { detail: ForecastDetail; model?: string | null }) {
+  const series = detail.series ?? [];
+  const hist = useMemo(
+    () => series.filter((p) => p.actual != null).map((p) => ({ date: p.date, v: p.actual as number })),
+    [series],
+  );
+  const fc = useMemo(
+    () => series.filter((p) => p.forecast != null).map((p) => ({ date: p.date, v: p.forecast as number })),
+    [series],
+  );
+  // Task 9 — Forecast Month selector (defaults to the first forecast period).
+  const [monthIdx, setMonthIdx] = useState(0);
 
-    const first = fc[0]!;
+  const view = useMemo(() => {
+    if (!fc.length) return null;
+    const first = fc[Math.min(monthIdx, fc.length - 1)]!;
     const fm = ym(first.date);
 
     // Same month, last year.
@@ -102,16 +125,46 @@ function SkuInterpretation({ detail }: { detail: ForecastDetail }) {
       season,
       trend,
     };
-  }, [detail]);
+  }, [fc, hist, monthIdx]);
 
   if (!view) return null;
   const num = (v: number | null) => (v == null ? "—" : formatNumber(Math.round(v)));
+  const modelName = model ? String(model) : null;
 
   return (
     <div className="space-y-3">
-      <p className="text-sm font-semibold text-foreground">
-        Forecast interpretation · {view.monthName}
-      </p>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm font-semibold text-foreground">
+          Forecast Interpretation — Why This Number?
+        </p>
+        {fc.length > 1 ? (
+          <div className="sm:w-48">
+            <Select
+              ariaLabel="Forecast month"
+              value={String(monthIdx)}
+              onChange={(v) => setMonthIdx(Number(v))}
+              options={fc.map((f, i) => {
+                const m = ym(f.date);
+                return { value: String(i), label: `${MONTHS[m.m - 1] ?? f.date.slice(0, 7)} ${m.y}` };
+              })}
+            />
+          </div>
+        ) : null}
+      </div>
+
+      {/* Headline forecast for the selected month + how it was produced. */}
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="text-2xl font-semibold tabular-nums text-foreground">
+          {num(view.forecastVal)} <span className="text-sm font-normal text-muted-foreground">units</span>
+        </span>
+        <span className="text-sm text-muted-foreground">forecast for {view.monthName}</span>
+        {modelName ? (
+          <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-border bg-secondary/40 px-2.5 py-0.5 text-xs">
+            Generated by <span className="font-semibold text-foreground">{modelName}</span>
+          </span>
+        ) : null}
+      </div>
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <InterpCard
           label="Same month last year"
@@ -150,6 +203,29 @@ function SkuInterpretation({ detail }: { detail: ForecastDetail }) {
             <span className="font-semibold text-foreground">{view.trend}</span>.
           </p>
         </div>
+      </div>
+
+      {/* Holiday / events + the generating pipeline. */}
+      <div className="rounded-md border border-border bg-secondary/20 px-3 py-2.5 text-sm">
+        <p className="font-medium text-foreground">Holiday &amp; event effects</p>
+        <p className="mt-1 text-muted-foreground">
+          Festival / holiday and planned-event lift is modeled via the exogenous
+          calendar (weekends excluded) and folded into this number.
+        </p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Pipeline:{" "}
+          <span className="font-medium text-foreground">{modelName ?? "champion model"}</span>
+          {" → residual correction → confidence intervals"}
+        </p>
+      </div>
+
+      {/* Phase X.I — Year-over-Year trend view (same detail.series; viz only). */}
+      <div className="rounded-md border border-border bg-card px-3 py-3">
+        <p className="mb-1 text-sm font-semibold text-foreground">Year-over-Year Trend View</p>
+        <p className="mb-2 text-xs text-muted-foreground">
+          Each year overlaid Jan→Dec; the forecast continues as a dashed line. Missing months are left blank.
+        </p>
+        <ForecastYoYChart series={detail.series ?? []} />
       </div>
     </div>
   );
@@ -195,7 +271,7 @@ const EXPORTS = [
   { kind: "forecasts", label: "Forecasts", needsReconcile: false },
   { kind: "all-models", label: "All-models comparison", needsReconcile: false },
   { kind: "reconciliation", label: "Brand reconciliation", needsReconcile: true },
-  { kind: "sku-adjusted", label: "SKU forecasts (reconciled)", needsReconcile: true },
+  { kind: "sku-adjusted", label: "Reconciled forecasts", needsReconcile: true },
 ];
 
 /** Champion drill-down — champion chart + the SKU's all-models comparison. */
@@ -232,6 +308,11 @@ function Drilldown({ row }: { row: ForecastMetricRow }) {
             Train {pct(row.trainWmape)} · Test {pct(row.testWmape)}
           </span>
         </div>
+        {/* Phase X.T · Task 2 — champion ranking metric is always WMAPE. */}
+        <p className="text-[0.72rem] text-muted-foreground">
+          ✓ Champion selected using <span className="font-medium text-foreground">WMAPE</span> — the
+          candidate with the lowest hold-out (test) WMAPE wins.
+        </p>
         {detail.isLoading ? (
           <Skeleton className="h-72 w-full" />
         ) : band.length ? (
@@ -239,6 +320,30 @@ function Drilldown({ row }: { row: ForecastMetricRow }) {
         ) : (
           <p className="text-sm text-muted-foreground">No series available.</p>
         )}
+
+        {/* Phase X.T · Task 3 — business-rule indicators/explanations removed
+            from the train / test / test-prediction visualization. Business rules
+            still run internally inside forecasting (engine unchanged); they are
+            simply no longer surfaced on these charts. */}
+
+        {/* Read-only debug dump of the chart's own arrays (no business-rule
+            commentary, no recompute). */}
+        <details className="rounded-md border border-border/60 bg-secondary/20 [&_summary]:cursor-pointer [&_summary::-webkit-details-marker]:hidden">
+          <summary className="px-3 py-2 text-xs font-medium text-foreground">
+            🐞 Forecast Debug Mode <span className="font-normal text-muted-foreground">· read-only</span>
+          </summary>
+          <div className="space-y-1.5 border-t border-border/60 p-3 font-mono text-[0.7rem] text-muted-foreground">
+            <DebugRow label="Champion" value={row.strategyLabel} />
+            <DebugRow label="Test WMAPE" value={pct(row.testWmape)} />
+            <DebugRow label="Train WMAPE" value={pct(row.trainWmape)} />
+            <DebugRow label="Actual (held-out test window)" value={arr((detail.data?.testActual ?? []).map((p) => p.value))} />
+            <DebugRow label="Test Prediction" value={arr((detail.data?.testPred ?? []).map((p) => p.value))} />
+            <DebugRow label="In-sample fit / train prediction" value={arr((detail.data?.fit ?? []).map((p) => p.value))} />
+            <DebugRow label="Forecast" value={arr(band.filter((b) => b.forecast != null).map((b) => b.forecast))} />
+            <DebugRow label="Lower band (P10)" value={arr(band.filter((b) => b.lower != null).map((b) => b.lower))} />
+            <DebugRow label="Upper band (P90)" value={arr(band.filter((b) => b.upper != null).map((b) => b.upper))} />
+          </div>
+        </details>
 
         {row.allModels.length ? (
           <div className="overflow-auto rounded-md border border-border">
@@ -295,7 +400,7 @@ function Drilldown({ row }: { row: ForecastMetricRow }) {
 
         {/* Forecast interpretation — same-month-LY / prior / L3M / seasonality /
             trend, derived from this SKU's history + forecast. */}
-        {detail.data ? <SkuInterpretation detail={detail.data} /> : null}
+        {detail.data ? <SkuInterpretation detail={detail.data} model={row.strategyLabel} /> : null}
       </CardContent>
     </Card>
   );
@@ -336,6 +441,8 @@ export function ForecastResultsPanel({
 }) {
   const level = formatForecastLevel(levelLabel);
   const levels = pluralizeLevel(level);
+  // Phase Y.2 — surface the Top-Down strategy used for this run (from the store).
+  const topDownEnabled = useForecastStore((s) => s.topDownEnabled);
   const [brand, setBrand] = useState(ALL);
   const [segment, setSegment] = useState(ALL);
   const [bandFilter, setBandFilter] = useState(ALL);
@@ -344,6 +451,7 @@ export function ForecastResultsPanel({
   // no row click required (Streamlit shows the drill-down by default).
   const [active, setActive] = useState<ForecastMetricRow | null>(metrics.skus[0] ?? null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [explainOpen, setExplainOpen] = useState(false);
 
   const brands = useMemo(() => Array.from(new Set(metrics.skus.map((s) => s.brand).filter(Boolean))) as string[], [metrics.skus]);
   const segments = useMemo(() => Array.from(new Set(metrics.skus.map((s) => s.segment).filter(Boolean))) as string[], [metrics.skus]);
@@ -376,6 +484,19 @@ export function ForecastResultsPanel({
 
   return (
     <div className="space-y-6">
+      {/* Phase Y.2 — Forecast Strategy header (which mode produced these results) */}
+      <div className="flex flex-col gap-2 rounded-xl border border-border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
+            Forecast Strategy
+          </p>
+          <p className="mt-0.5 text-sm font-semibold text-foreground">
+            {topDownEnabled ? "Top-Down Distribution" : `Direct ${levelLabel} Forecasting`}
+          </p>
+        </div>
+        <TopDownBadge enabled={topDownEnabled} />
+      </div>
+
       {/* Run summary */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Kpi label={`${levels} forecasted`} value={formatNumber(k.skusForecasted)} />
@@ -457,18 +578,32 @@ export function ForecastResultsPanel({
           <h3 className="flex items-center gap-2 text-base font-semibold">
             <TrendingUp className="size-4 text-primary" /> {level} drill-down
           </h3>
-          <div className="flex flex-col gap-1 sm:max-w-xs">
-            <label className="text-xs font-medium text-foreground">Inspect {level}</label>
-            <Select
-              ariaLabel={`Inspect ${level}`}
-              value={active.id}
-              onChange={(id) => setActive(metrics.skus.find((s) => s.id === id) ?? active)}
-              options={metrics.skus.map((s) => ({ value: s.id, label: s.sku }))}
-            />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div className="flex flex-col gap-1 sm:max-w-xs sm:flex-1">
+              <label className="text-xs font-medium text-foreground">Inspect {level}</label>
+              <Select
+                ariaLabel={`Inspect ${level}`}
+                value={active.id}
+                onChange={(id) => setActive(metrics.skus.find((s) => s.id === id) ?? active)}
+                options={metrics.skus.map((s) => ({ value: s.id, label: s.sku }))}
+              />
+            </div>
+            {/* Phase X.R — Explain This Forecast (read-only explainability trace). */}
+            <Button variant="outline" size="sm" onClick={() => setExplainOpen(true)}>
+              <Sparkles className="size-4" /> Explain Forecast
+            </Button>
           </div>
           <Drilldown row={active} />
         </section>
       ) : null}
+
+      <ForecastExplainPanel
+        open={explainOpen}
+        onOpenChange={setExplainOpen}
+        row={active}
+        datasetId={datasetId}
+        levelLabel={level}
+      />
 
       {/* Forecast interpretation — portfolio-level read of the run (data-driven). */}
       <ForecastInterpretation metrics={metrics} levels={levels} />

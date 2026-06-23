@@ -309,48 +309,63 @@ SEGMENT_ARCHITECTURE = {
     # 1-3 seasonal cycles; Prophet's Bayesian approach handles sparsity better.
     # Global LGBM learns price elasticity across 3000 SKUs; SARIMAX can't.
     'Stable High contributors': {
-        'primary': 'prophet',
+        # PHASE X — SARIMAX primary (price/promo regressors + auto-order) for hero
+        # SKUs. Prophet (the previous primary) and the rest stay as champion-by-
+        # holdout challengers, so nothing is removed — the best model still wins
+        # and Prophet remains the automatic fallback.
+        'primary': 'local_sarimax_promo',
         # NOTE: 'neural_elasticity' (LSTM) is an opt-in member — enable it by
         # adding it here AND setting TIMELENS_ENABLE_NEURAL=1 with a working
         # TensorFlow/NumPy environment. It is kept out of the default blend
         # because TensorFlow import can hang on mismatched ABIs (see
         # phase2_enhancements._try_import_keras).
-        'blend': ['global_lgbm', 'moe', 'catboost', 'autoarima', 'theta'],
+        # PHASE X.F — execution-optimized secondary set (dropped AutoARIMA + MoE).
+        'blend': ['prophet', 'global_lgbm', 'catboost', 'theta'],
         'blend_method': 'weighted_median',     # robust to outliers
         'features': ['lag_rolling', 'price', 'fourier', 'holiday', 'promo', 'events'],
         'residual_booster': 'xgb',             # post-hoc residual XGBoost
         'residual_threshold_pct': 10.0,
-        'ci_source': 'prophet',                # CIs from Prophet natively
+        'ci_source': 'prophet',                # Prophet/conformal CIs (hero SKUs)
         'reconcile': 'bottom_up',              # contribute up to brand/category
         'cold_start_proxy': False,
-        'tagline': 'Prophet (Bayesian trend+events) · Global LGBM (cross-learning) · CatBoost · XGB residual @ 10%',
+        'tagline': 'SARIMAX (price/promo + auto-order) · Prophet · Global LGBM · CatBoost · Theta · XGB residual @ 10%',
     },
     # ── Steady earners — automate, monitor for drift ──
     # RETHINK: Global LGBM primary. Local HW misses cross-SKU seasonality; with 72K
     # training rows (3000 SKUs × 24 mo), pooled model sees robust seasonal patterns
     # that beat local 1-3 cycle fitting. Plus native price/promo support.
     'Stable Mid contributors': {
+        # PHASE X — Global LightGBM primary (unchanged); SARIMAX added as a
+        # challenger so the target secondary set {SARIMAX, Prophet, CatBoost,
+        # Theta, AutoARIMA} is fully represented in the candidate pool.
         'primary': 'global_lgbm',
-        'blend': ['prophet', 'catboost', 'theta', 'autoarima'],
+        # PHASE X.F — execution-optimized secondary set (dropped AutoARIMA).
+        'blend': ['local_sarimax_promo', 'prophet', 'catboost', 'theta'],
         'blend_method': 'weighted_mean',
         'features': ['lag_rolling', 'price', 'fourier', 'holiday', 'promo'],
         'residual_booster': 'xgb',
         'ci_source': 'quantile_lgbm',
         'reconcile': 'bottom_up',
         'cold_start_proxy': False,
-        'tagline': 'Global LGBM (pooled seasonality) · Prophet/Theta blend · CatBoost · XGB residual',
+        'tagline': 'Global LGBM (pooled seasonality) · SARIMAX · Prophet · CatBoost · Theta · XGB residual',
     },
-    # ── Tail catalogue — many similar curves, global model wins ──
+    # ── Tail catalogue — PHASE X: SARIMAX primary per the target strategy ──
+    # NOTE (runtime): the previous primary was global_lgbm_full (pooled global
+    # model), which is cheaper on the long tail. Making SARIMAX the primary fits
+    # a SARIMAX model per tail SKU. LightGBM stays in the blend, so champion-by-
+    # holdout still falls back to it whenever it is more accurate — accuracy is
+    # protected; only candidate-pool runtime on the tail increases.
     'Stable Low contributors': {
-        'primary': 'global_lgbm_full',
-        'blend': ['holt_winters', 'theta', 'autoarima'],
+        'primary': 'local_sarimax_promo',
+        # PHASE X.F — execution-optimized secondary set (dropped AutoARIMA).
+        'blend': ['holt_winters', 'theta', 'global_lgbm_full'],
         'blend_method': 'weighted_mean',
         'features': ['lag_rolling', 'price', 'fourier', 'promo', 'cross_sku'],
         'residual_booster': None,              # not worth the runtime cost on the long tail
         'ci_source': 'quantile_lgbm',          # quantile loss for cheap CIs
         'reconcile': 'top_down',               # take share from category total
         'cold_start_proxy': True,              # use brand-mean if history < 6mo
-        'tagline': 'Global LightGBM · Theta/HW blend · quantile CIs',
+        'tagline': 'SARIMAX (price/promo) · Holt-Winters · Theta · Global LightGBM (fallback) · quantile CIs',
     },
     # ── High-stakes spikes — event-aware trend ──
     # RETHINK: Prophet primary. Spikes are often EVENT-DRIVEN (Diwali, launches).
@@ -358,15 +373,20 @@ SEGMENT_ARCHITECTURE = {
     # captures holidays natively. For risk-aware forecasts, Prophet also gives
     # uncertainty intervals (use 90th percentile for safety stock).
     'Volatile High contributors': {
-        'primary': 'prophet',
-        'blend': ['global_lgbm', 'moe', 'xgb_quantile_90', 'theta', 'autoarima'],
+        # PHASE X — MoE (mixture-of-experts) primary: combines trend / seasonality
+        # / event / exog experts via a validation-optimised gate, the strongest
+        # single learner for high-value spiky demand. Prophet (previous primary),
+        # SARIMAX, LightGBM, XGBoost-P90 and CatBoost remain challengers/fallbacks.
+        'primary': 'moe',
+        # PHASE X.F — execution-optimized secondary set (dropped SARIMAX).
+        'blend': ['prophet', 'global_lgbm', 'xgb_quantile_90', 'catboost'],
         'blend_method': 'weighted_median',
         'features': ['lag_rolling', 'price', 'fourier', 'holiday', 'promo', 'events'],
         'residual_booster': 'xgb',
         'ci_source': 'prophet',
         'reconcile': 'middle_out',
         'cold_start_proxy': True,
-        'tagline': 'Prophet (event-aware trend) · Global LGBM · P90 quantile (safety stock) · XGB residual',
+        'tagline': 'MoE (gated experts) · Prophet · Global LGBM · XGBoost-P90 (safety stock) · CatBoost · XGB residual',
     },
     # ── Promo / festive sensitive — exog signal is everything ──
     # RETHINK: Global LGBM primary. Promo sensitivity IS the signal; LGBM learns
@@ -374,41 +394,81 @@ SEGMENT_ARCHITECTURE = {
     # (HW+Theta+ARIMA can't learn exog at all). Prophet handles holiday spikes.
     # Expected: -35% WMAPE improvement (biggest opportunity).
     'Volatile Mid contributors': {
+        # PHASE X — Global LightGBM primary (unchanged); MoE + SARIMAX + XGBoost
+        # added so the target secondary set {MoE, SARIMAX, Prophet, CatBoost,
+        # XGBoost} is fully represented as challengers.
         'primary': 'global_lgbm',
         # 'neural_elasticity' fits this price-elastic segment well but is opt-in
         # (TIMELENS_ENABLE_NEURAL=1 + working TensorFlow) — see Stable High note.
-        'blend': ['prophet', 'catboost', 'theta', 'autoarima'],
+        'blend': ['moe', 'local_sarimax_promo', 'prophet', 'catboost', 'xgb_quantile_90'],
         'blend_method': 'weighted_median',
         'features': ['lag_rolling', 'price', 'fourier', 'holiday', 'promo', 'events'],
         'residual_booster': 'xgb',
         'ci_source': 'quantile_lgbm',
         'reconcile': 'bottom_up',
         'cold_start_proxy': False,
-        'tagline': 'Global LGBM (price elasticity) · Prophet (events) · CatBoost · XGB residual',
+        'tagline': 'Global LGBM (price elasticity) · MoE · SARIMAX · Prophet (events) · CatBoost · XGBoost · XGB residual',
     },
-    # ── Intermittent tail — Croston family, consider rationalisation ──
+    # ── Intermittent tail — PHASE X: TSB primary (Teunter-Syntetos-Babai) ──
+    # TSB handles obsolescence/decay better than classic Croston. Croston/SBA
+    # stay in the pool as challengers/fallbacks (also the intermittent default
+    # shortlist), so champion-by-holdout keeps the most accurate of the family.
     'Volatile Low contributors': {
-        'primary': 'croston_sba',
-        'blend': ['tsb', 'holt_winters', 'global_lgbm'],
+        'primary': 'tsb',
+        'blend': ['croston_sba', 'holt_winters', 'global_lgbm'],
         'blend_method': 'weighted_mean',
         'features': ['lag_rolling', 'promo'],
         'residual_booster': None,
         'ci_source': 'bootstrap',
         'reconcile': 'top_down',
         'cold_start_proxy': True,
-        'tagline': 'Croston/SBA (demand occurrence + size) · TSB/HW · DTW proxy fallback',
+        'tagline': 'TSB (occurrence+decay) · Croston/SBA · Holt-Winters · Global LightGBM · DTW proxy fallback',
     },
-    # ── Cold-start / NPI — too little history to fit any model ──
+    # ── Cold Start (<6 months) — too little history to fit any model ──
+    # PHASE X.B LOCKED: Primary = Chronos zero-shot + DTW proxy. Secondary =
+    # Naive Seasonal, SARIMAX Proxy, Holt-Winters (+ LightGBM pooled). 'Category
+    # average' has no engine model key — the DTW proxy serves that role.
     'CV NULL/0': {
         'primary': 'chronos_zero_shot',
-        'blend': ['naive_seasonal', 'holt_winters'],
+        # PHASE X.F — execution-optimized secondary set (dropped SARIMAX proxy).
+        'blend': ['naive_seasonal', 'holt_winters', 'global_lgbm'],
         'blend_method': 'weighted_mean',
         'features': ['lag_rolling'],
         'residual_booster': None,
         'ci_source': 'chronos_quantiles',
         'reconcile': 'top_down',
         'cold_start_proxy': True,              # ← key — DTW match to similar SKU
-        'tagline': 'Chronos zero-shot · DTW-proxy from similar SKU · naive-seasonal anchor',
+        'tagline': 'Chronos zero-shot · DTW-proxy from similar SKU · Naive Seasonal · Holt-Winters · LightGBM',
+    },
+    # ── New Product (≤3 months) — NPI; same Chronos + DTW primary as Cold Start ──
+    # PHASE X.B LOCKED: Primary = Chronos zero-shot + DTW proxy. Secondary =
+    # SARIMAX Proxy, Naive Seasonal, LightGBM, DTW Similarity (cold_start_proxy).
+    'New product': {
+        'primary': 'chronos_zero_shot',
+        # PHASE X.F — execution-optimized secondary set (dropped SARIMAX proxy).
+        'blend': ['naive_seasonal', 'global_lgbm'],
+        'blend_method': 'weighted_mean',
+        'features': ['lag_rolling'],
+        'residual_booster': None,
+        'ci_source': 'chronos_quantiles',
+        'reconcile': 'top_down',
+        'cold_start_proxy': True,              # ← DTW similarity proxy
+        'tagline': 'Chronos zero-shot · DTW similarity proxy · Naive Seasonal · LightGBM',
+    },
+    # ── Short History (6–11 months) — enough to pool, not to fit locally well ──
+    # PHASE X.B LOCKED: Primary = Global LightGBM. Secondary = MoE, Theta,
+    # Holt-Winters, SARIMAX.
+    'Short history': {
+        'primary': 'global_lgbm',
+        # PHASE X.F — execution-optimized secondary set (dropped MoE + SARIMAX).
+        'blend': ['theta', 'holt_winters'],
+        'blend_method': 'weighted_mean',
+        'features': ['lag_rolling', 'price', 'fourier', 'promo'],
+        'residual_booster': None,
+        'ci_source': 'quantile_lgbm',
+        'reconcile': 'top_down',
+        'cold_start_proxy': True,
+        'tagline': 'Global LightGBM (pooled) · Theta · Holt-Winters · DTW proxy',
     },
 }
 
@@ -444,34 +504,39 @@ def get_segment_architecture(profile: dict) -> dict:
 
 
 def recommend_strategy(profile: dict) -> str:
-    """Decision tree mapping SKU profile → forecasting strategy.
+    """Map SKU profile → primary forecasting strategy.
 
-    Now consults `SEGMENT_ARCHITECTURE` so the choice of *primary* model
-    flows from the same recipe used by the candidate-pool builder, the
-    feature engineer, and the Profile UI.
+    PHASE X.B — LOCKED BUSINESS ROUTING. Routing is STRICTLY by business segment
+    (plus the history-availability lifecycle gates below). There is no dynamic /
+    intermittency-based override of a segment's primary — the segment's
+    SEGMENT_ARCHITECTURE recipe is authoritative:
 
-    Strategies (terminal labels):
-        chronos_zero_shot   : <6 months — pretrained foundation model, no training needed
-        global_lgbm         : 6–12 months OR Volatile Low — borrows strength across SKUs
-        croston_sba         : intermittent or lumpy — handles many zeros
-        local_sarimax_promo : Stable High contributors — enough data + strong exog signal
-        ensemble_local      : Stable Mid + Volatile Mid/High — median of 3 models
-        global_lgbm_full    : Stable Low — many SKUs, similar shape, global model wins
+        Stable High      → SARIMAX (local_sarimax_promo)
+        Stable Mid       → Global LightGBM
+        Stable Low       → SARIMAX (local_sarimax_promo)
+        Volatile High    → MoE
+        Volatile Mid     → Global LightGBM
+        Volatile Low     → TSB
+        Short History    → Global LightGBM   (6–11 mo gate)
+        New Product      → Chronos zero-shot + DTW proxy   (≤3 mo → cold gate)
+        Cold Start       → Chronos zero-shot + DTW proxy   (<6 mo gate)
+
+    Secondary models live in each recipe's `blend` and act as ensemble members /
+    champion-by-holdout fallbacks (existing engine behaviour) — none are removed.
+    The two pre-segment guards below are data-validity gates, NOT segment
+    overrides: a dead series (no demand) gets a zero forecast.
     """
     if profile.get('intermittency') == 'dead':
         return 'naive_zero'
     if profile.get('is_cold_start'):
-        # Cold-start always uses zero-shot regardless of segment recipe — the
-        # recipe's `cold_start_proxy` flag governs whether we also DTW-proxy.
+        # New Product (≤3 mo) / Cold Start (<6 mo) → Chronos zero-shot; the
+        # recipe's `cold_start_proxy` flag governs the DTW look-alike proxy.
         return 'chronos_zero_shot'
-    if profile.get('intermittency') in ('intermittent', 'lumpy'):
-        # Intermittent-class trumps segment — Croston/TSB are calibrated for
-        # zero-heavy series and other models break down.
-        return 'croston_sba'
     if profile.get('is_short_history'):
+        # Short History (6–11 mo) → Global LightGBM (pools across SKUs).
         return 'global_lgbm'
 
-    # Normal path — read the per-segment architecture recipe.
+    # Segment-locked path — the per-segment architecture recipe is authoritative.
     arch = get_segment_architecture(profile)
     return arch.get('primary', 'global_lgbm_full')
 
@@ -4194,12 +4259,13 @@ def _build_candidate_pool(profile_row: dict,
     if intermittency in ('intermittent', 'lumpy'):
         default_pool = ['croston_sba', 'tsb', 'holt_winters']
     else:
-        # MoE leads the non-intermittent default shortlist so it always competes
-        # for SKUs with real trend/seasonality/event/exog signal, even when the
-        # segment recipe didn't list it. Intermittent/dead SKUs are left to the
-        # Croston family (the decomposition experts add no value on zero-heavy
-        # demand).
-        default_pool = ['moe', 'holt_winters', 'theta', 'autoarima']
+        # PHASE X.F — execution-optimized default shortlist. Dropped MoE + AutoARIMA
+        # from the always-on safety net to cut model-fitting time: AutoARIMA no
+        # longer executes for any segment, and MoE runs only where a segment's
+        # blend explicitly lists it (Volatile Mid) or it is the primary (Volatile
+        # High). Holt-Winters stays as the guaranteed safety-net candidate; Theta
+        # is cheap and appears in several segments' secondary sets.
+        default_pool = ['holt_winters', 'theta']
         if global_pkg is not None:
             default_pool.append('global_lgbm')
     for c in default_pool:

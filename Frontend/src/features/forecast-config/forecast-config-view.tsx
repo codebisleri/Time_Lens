@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { forecastService, skuService } from "@/lib/api/services";
 import { routes } from "@/lib/constants/routes";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import { WorkflowLock } from "@/features/workflow/workflow-lock";
 import { useWorkflowStatus } from "@/features/workflow/use-workflow-status";
 
@@ -140,6 +141,10 @@ function Toggle({
 export function ForecastConfigView() {
   const router = useRouter();
   const workflow = useWorkflowStatus();
+  const { label: levelLabel, plural: levelPlural } = useForecastLevel();
+  const algorithms = ALGORITHMS.map((a) =>
+    a.id === "auto" ? { ...a, label: `Auto (route per ${levelLabel})` } : a,
+  );
   const [config, setConfig] = useState<ForecastConfig>(DEFAULT_CONFIG);
   const [phase, setPhase] = useState<RunPhase>("idle");
   const [progress, setProgress] = useState(0);
@@ -242,7 +247,7 @@ export function ForecastConfigView() {
     return (
       <PageShell
         title="Forecast Configuration"
-        description="Step 4 — tune the engine and run forecasts across your routed SKUs."
+        description={`Step 4 — tune the engine and run forecasts across your routed ${levelPlural}.`}
       >
         <WorkflowLock
           title="Configuration locked"
@@ -257,7 +262,7 @@ export function ForecastConfigView() {
   return (
     <PageShell
       title="Forecast Configuration"
-      description="Step 4 — tune the engine and run forecasts across your routed SKUs."
+      description={`Step 4 — tune the engine and run forecasts across your routed ${levelPlural}.`}
       actions={
         <Button variant="outline" onClick={save} disabled={busy}>
           <Save className="size-4" /> Save configuration
@@ -293,7 +298,7 @@ export function ForecastConfigView() {
               />
             </div>
             <div className="space-y-2">
-              <Label>SKUs to forecast (top by volume)</Label>
+              <Label>{levelPlural} to forecast (top by volume)</Label>
               <Segmented
                 value={config.skuLimit}
                 options={[6, 12, 24]}
@@ -309,12 +314,12 @@ export function ForecastConfigView() {
               <Sparkles className="size-4 text-muted-foreground" /> Algorithms
             </CardTitle>
             <CardDescription>
-              Candidate models — the engine routes & selects per SKU.
+              Candidate models — the engine routes & selects per {levelLabel}.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {ALGORITHMS.map((a) => (
+              {algorithms.map((a) => (
                 <label
                   key={a.id}
                   htmlFor={`algo-${a.id}`}
@@ -346,7 +351,7 @@ export function ForecastConfigView() {
           <Toggle
             id="champion"
             label="Champion selection"
-            description="Auto-pick the best model per SKU via cross-validation."
+            description={`Auto-pick the best model per ${levelLabel} via cross-validation.`}
             checked={config.autoChampion}
             onChange={(v) => patch({ autoChampion: v })}
           />
@@ -373,7 +378,7 @@ export function ForecastConfigView() {
           <div className="space-y-1">
             <p className="text-sm font-medium text-foreground">Run forecast</p>
             <p className="text-sm text-muted-foreground">
-              Generates forecasts for the top {config.skuLimit} SKUs ·{" "}
+              Generates forecasts for the top {config.skuLimit} {levelPlural} ·{" "}
               {config.horizon}-period horizon.
             </p>
           </div>

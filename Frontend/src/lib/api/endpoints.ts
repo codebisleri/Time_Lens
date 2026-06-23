@@ -17,6 +17,7 @@ export const endpoints = {
     datasets: () => "/datasets",
     upload: () => "/datasets/upload",
     dataset: (id: string) => `/datasets/${id}`,
+    levelAttributes: (id: string) => `/datasets/${id}/level-attributes`,
     config: (id: string) => `/datasets/${id}/config`,
     preview: (id: string) => `/datasets/${id}/preview`,
     export: (id: string, kind: string) => `/datasets/${id}/export/${kind}`,
@@ -54,6 +55,10 @@ export const endpoints = {
     run: () => "/scenarios/run",
     save: () => "/scenarios/save",
     remove: (id: string) => `/scenarios/${id}`,
+    // Causal Effect Estimation (DoWhy) — Phase Y.A parity.
+    causalFeatures: () => "/scenarios/causal/features",
+    causalRun: () => "/scenarios/causal/run",
+    causalDrivers: () => "/scenarios/causal/drivers",
   },
   comparison: {
     compare: () => "/scenarios/compare",
@@ -81,5 +86,10 @@ export const endpoints = {
     run: () => "/segmentation/run",
     runs: () => "/segmentation/runs",
     trace: () => "/segmentation/trace",
+  },
+  explainability: {
+    // Phase X.W — forecast-level only; the portfolio `global` endpoint was removed.
+    local: (level: string) => `/explainability/local/${encodeURIComponent(level)}`,
+    horizon: (level: string) => `/explainability/horizon/${encodeURIComponent(level)}`,
   },
 } as const;

@@ -5,6 +5,7 @@ import type { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/data-table/data-table";
 import { formatNumber, formatPercent } from "@/lib/utils/format";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type { SegmentedSku } from "@/types/segmentation";
 
 /** Per-SKU segmentation table. Rows open the trace drawer. */
@@ -15,11 +16,12 @@ export function SegmentTable({
   data: SegmentedSku[];
   onRowClick: (sku: SegmentedSku) => void;
 }) {
+  const { label: levelLabel } = useForecastLevel();
   const columns = useMemo<ColumnDef<SegmentedSku>[]>(
     () => [
       {
         accessorKey: "sku",
-        header: "SKU",
+        header: levelLabel,
         cell: ({ row }) => (
           <span className="font-mono text-xs font-medium text-foreground">
             {row.original.sku}
@@ -77,7 +79,7 @@ export function SegmentTable({
         ),
       },
     ],
-    [],
+    [levelLabel],
   );
 
   // Fixed-height, internally-scrolled, sortable grid — mirrors Streamlit's

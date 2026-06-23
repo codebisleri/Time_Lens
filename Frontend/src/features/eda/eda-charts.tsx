@@ -6,13 +6,13 @@ import { EChartBase } from "@/components/charts/echart-base";
 import { useThemeMode } from "@/lib/theme/use-theme-mode";
 import { readCssVar } from "@/lib/theme/theme-config";
 import { formatCompact, formatDate, formatNumber } from "@/lib/utils/format";
+import { isWeekendDate } from "@/lib/utils/holidays";
 import type {
   EdaAcfPoint,
   EdaDecompositionPoint,
   EdaHistogramBin,
   EdaHoliday,
   EdaMonthlyBox,
-  EdaSeasonalPoint,
   EdaSeriesPoint,
 } from "@/types/eda";
 
@@ -81,36 +81,62 @@ export function EdaTrendChart({
 }
 
 /** Seasonality — average demand by calendar month. */
+const SEASON_MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+const SEASON_PALETTE = [
+  "#2563eb", "#ea580c", "#16a34a", "#7c3aed", "#db2777",
+  "#0891b2", "#ca8a04", "#dc2626", "#4f46e5", "#0d9488",
+];
+
+/**
+ * Seasonality — one LINE PER YEAR over Jan→Dec (Phase X.T · Task 5), replacing
+ * the single month-aggregate bar chart. Lets the planner compare the seasonal
+ * shape across years directly. Pivoted client-side from the raw demand series
+ * (month total per calendar year); no engine change.
+ */
 export function EdaSeasonalityChart({
-  data,
-  height = 260,
+  series,
+  height = 300,
 }: {
-  data: EdaSeasonalPoint[];
+  series: EdaSeriesPoint[];
   height?: number;
 }) {
   const { resolvedMode } = useThemeMode();
   const option = useMemo<EChartsOption>(() => {
     void resolvedMode;
-    const top = readCssVar("--chart-2") || "#2dd4bf";
-    const bottom = readCssVar("--chart-1") || "#6366f1";
-    const rows = Array.isArray(data) ? data : [];
+    const byYear = new Map<number, (number | null)[]>();
+    for (const p of Array.isArray(series) ? series : []) {
+      if (p.value == null || !p.date) continue;
+      const d = new Date(p.date);
+      if (Number.isNaN(d.getTime())) continue;
+      const y = d.getFullYear();
+      const m = d.getMonth();
+      if (!byYear.has(y)) byYear.set(y, new Array(12).fill(null));
+      const arr = byYear.get(y)!;
+      arr[m] = (arr[m] ?? 0) + p.value; // total demand in that calendar month
+    }
+    const years = [...byYear.keys()].sort((a, b) => a - b);
     return {
-      animationDuration: 600,
-      tooltip: { trigger: "axis", axisPointer: { type: "shadow" },
-        valueFormatter: (v) => formatNumber(v as number) },
-      grid: { left: 4, right: 8, top: 12, bottom: 4, containLabel: true },
-      xAxis: { type: "category", data: rows.map((d) => d.label), axisTick: { show: false } },
+      animationDuration: 500,
+      tooltip: { trigger: "axis", valueFormatter: (v) => formatNumber(v as number) },
+      legend: { top: 0, type: "scroll" },
+      grid: { left: 4, right: 12, top: 34, bottom: 4, containLabel: true },
+      xAxis: { type: "category", data: SEASON_MONTHS, boundaryGap: false },
       yAxis: { type: "value", axisLabel: { formatter: (v: number) => formatCompact(v) } },
-      series: [{
-        type: "bar", barWidth: "55%", data: rows.map((d) => d.value),
-        itemStyle: {
-          borderRadius: [6, 6, 0, 0],
-          color: { type: "linear", x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [{ offset: 0, color: top }, { offset: 1, color: bottom }] },
-        },
-      }],
+      series: years.map((y, i) => ({
+        name: String(y),
+        type: "line",
+        smooth: true,
+        connectNulls: true,
+        showSymbol: years.length <= 6,
+        data: byYear.get(y)!,
+        lineStyle: { width: 2 },
+        itemStyle: { color: SEASON_PALETTE[i % SEASON_PALETTE.length] },
+      })),
     };
-  }, [data, resolvedMode]);
+  }, [series, resolvedMode]);
   return <EChartBase option={option} height={height} />;
 }
 
@@ -381,7 +407,11 @@ export function EdaHolidayChart({
     const mark = readCssVar("--chart-3") || "#10b981";
     const rows = Array.isArray(series) ? series : [];
     const labels = rows.map((d) => label(d.date));
-    const holidaySet = new Set((holiday?.markers ?? []).map((m) => m.date));
+    // Task 2 — never mark weekends (Sat/Sun) as holidays, only real festival/
+    // national/public/user holidays.
+    const holidaySet = new Set(
+      (holiday?.markers ?? []).filter((m) => !isWeekendDate(m.date)).map((m) => m.date),
+    );
     const scatter = rows.map((d) => (holidaySet.has(d.date) ? d.value : null));
     return {
       animationDuration: 600,

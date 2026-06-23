@@ -3,6 +3,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/lib/utils/format";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type { ReportSummary } from "@/types/report";
 
 function Tile({ label, value, meta }: { label: string; value: string; meta?: string }) {
@@ -30,6 +31,7 @@ const BAND_TEXT: Record<string, string> = {
 /** Executive summary, forecast headline, segment mix, and top opportunities. */
 export function ReportSummaryPanel({ summary }: { summary: ReportSummary }) {
   const { dataset, forecast, segments, topOpportunities } = summary;
+  const { label: levelLabel, plural: levelPlural } = useForecastLevel();
   const dateRange =
     dataset.dateStart && dataset.dateEnd
       ? `${dataset.dateStart} → ${dataset.dateEnd}`
@@ -41,13 +43,13 @@ export function ReportSummaryPanel({ summary }: { summary: ReportSummary }) {
       {/* Executive summary */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <Tile
-          label="Portfolio SKUs"
+          label={`Portfolio ${levelPlural}`}
           value={formatNumber(dataset.skuCount ?? 0)}
           meta={`${formatNumber(dataset.rowCount ?? 0)} rows`}
         />
         <Tile label="History span" value={dateRange} />
         <Tile
-          label="SKUs forecasted"
+          label={`${levelPlural} forecasted`}
           value={formatNumber(forecast.skusForecasted)}
           meta={
             forecast.runId
@@ -105,7 +107,7 @@ export function ReportSummaryPanel({ summary }: { summary: ReportSummary }) {
               Top opportunities
             </h3>
             <p className="text-xs text-muted-foreground">
-              Highest-volume SKUs to prioritise in the demand plan.
+              Highest-volume {levelPlural} to prioritise in the demand plan.
             </p>
             {topOpportunities.length === 0 ? (
               <p className="text-sm text-muted-foreground">
@@ -117,7 +119,7 @@ export function ReportSummaryPanel({ summary }: { summary: ReportSummary }) {
                   <thead>
                     <tr className="border-b border-border bg-card">
                       <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                        SKU
+                        {levelLabel}
                       </th>
                       <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground">
                         Forecast

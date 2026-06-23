@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ForecastTrendBandChart } from "@/features/forecast/forecast-trend-band-chart";
 import type { ForecastBandPoint } from "@/features/forecast/hooks/use-forecast-trend";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type { SingleSkuResult } from "@/types/forecast";
 
 const pct = (v: number | null) => (v == null ? "—" : `${v.toFixed(1)}%`);
@@ -28,6 +29,7 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
  * model competition/ranking table, and the narrative summary.
  */
 export function SingleSkuResultsPanel({ result }: { result: SingleSkuResult }) {
+  const { label: levelLabel } = useForecastLevel();
   const band: ForecastBandPoint[] = useMemo(
     () =>
       (Array.isArray(result.series) ? result.series : []).map((p) => ({
@@ -55,7 +57,7 @@ export function SingleSkuResultsPanel({ result }: { result: SingleSkuResult }) {
         </Card>
         <Kpi label="Train WMAPE" value={pct(result.trainWmape)} hint="in-sample fit" />
         <Kpi label="Test WMAPE" value={pct(result.testWmape)} hint="out-of-sample" />
-        <Kpi label="Forecast horizon" value={`${result.periods}`} hint={`SKU ${result.sku}`} />
+        <Kpi label="Forecast horizon" value={`${result.periods}`} hint={`${levelLabel} ${result.sku}`} />
       </div>
 
       {/* Forecast chart */}

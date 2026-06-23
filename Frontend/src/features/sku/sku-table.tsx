@@ -32,6 +32,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/utils/format";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type { SkuRow } from "./derive";
 import { SKU_STATUS_VARIANT } from "./derive";
 import {
@@ -57,6 +58,7 @@ export function SkuTable({
   data: SkuRow[];
   onRowClick: (sku: SkuRow) => void;
 }) {
+  const { label: levelLabel, plural: levelPlural } = useForecastLevel();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [rowSelection, setRowSelection] = useState({});
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
@@ -96,7 +98,7 @@ export function SkuTable({
           ) : (
             <>
               {formatNumber(data.length)}{" "}
-              {data.length === 1 ? "SKU" : "SKUs"}
+              {data.length === 1 ? levelLabel : levelPlural}
             </>
           )}
         </p>

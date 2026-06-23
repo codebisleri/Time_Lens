@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { ErrorState } from "@/components/feedback/error-state";
 import { submissionService } from "@/lib/api/services";
 import { downloadFile } from "@/lib/utils/download";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import { useSubmission } from "./hooks/use-submission";
 import { SubmissionFilters } from "./submission-filters";
 import { SubmissionKpiStrip } from "./submission-kpis";
@@ -49,6 +50,7 @@ export function SubmissionWorksheet() {
     applyBulk,
     submit,
   } = useSubmission();
+  const { label: levelLabel, plural: levelPlural } = useForecastLevel();
   const [exporting, setExporting] = useState(false);
 
   async function handleExport() {
@@ -92,7 +94,7 @@ export function SubmissionWorksheet() {
       <SubmissionFilters
         filters={filters}
         facets={data.facets}
-        summary={`${data.filteredRows} month-row(s) · ${data.kpis.skuCount} SKU(s) in view (of ${data.totalSkus} SKUs · ${data.totalRows} total rows).`}
+        summary={`${data.filteredRows} month-row(s) · ${data.kpis.skuCount} ${levelLabel}(s) in view (of ${data.totalSkus} ${levelPlural} · ${data.totalRows} total rows).`}
         onChange={setFilters}
       />
 

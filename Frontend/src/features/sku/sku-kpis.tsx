@@ -8,6 +8,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime, formatNumber } from "@/lib/utils/format";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type { SkuRow } from "./derive";
 
 const GRID = "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4";
@@ -60,6 +61,7 @@ export function SkuKpiSection({
   skus: SkuRow[];
   refreshedAt: string | null;
 }) {
+  const { plural: levelPlural } = useForecastLevel();
   const total = skus.length;
   const active = skus.filter((s) => s.status === "active").length;
   const categories = new Set(skus.map((s) => s.category)).size;
@@ -70,13 +72,13 @@ export function SkuKpiSection({
     <section className={GRID}>
       <SkuKpiCard
         icon={Boxes}
-        label="Total SKUs"
+        label={`Total ${levelPlural}`}
         value={formatNumber(total)}
         meta={`${formatNumber(withForecast)} with forecasts`}
       />
       <SkuKpiCard
         icon={CheckCircle2}
-        label="Active SKUs"
+        label={`Active ${levelPlural}`}
         value={formatNumber(active)}
         meta={`${activePct}% of catalog active`}
       />

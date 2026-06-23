@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { ForecastMiniTrendChart } from "@/features/forecast/forecast-mini-trend-chart";
 import { useForecastDetail } from "@/features/forecast/hooks/use-forecast-detail";
 import type { ForecastMetricRow } from "@/types/forecast";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import { championSmape, errorContribution, wmapeTone, type Tone } from "./derive";
 
 const TONE_TEXT: Record<Tone, string> = {
@@ -51,6 +52,7 @@ function pct(v: number | null | undefined): string {
  * (lazily fetched from the forecast detail endpoint).
  */
 export function SkuDrilldown({ rows }: { rows: ForecastMetricRow[] }) {
+  const { label: levelLabel } = useForecastLevel();
   const ranked = useMemo(
     () =>
       [...rows].sort((a, b) => errorContribution(b) - errorContribution(a)),
@@ -69,8 +71,8 @@ export function SkuDrilldown({ rows }: { rows: ForecastMetricRow[] }) {
 
   return (
     <div className="space-y-4">
-      <Field label="Inspect SKU (ranked by error contribution)">
-        <Select value={id || row.id} onChange={setId} options={options} ariaLabel="Select SKU" />
+      <Field label={`Inspect ${levelLabel} (ranked by error contribution)`}>
+        <Select value={id || row.id} onChange={setId} options={options} ariaLabel={`Select ${levelLabel}`} />
       </Field>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -95,7 +97,7 @@ export function SkuDrilldown({ rows }: { rows: ForecastMetricRow[] }) {
           <Skeleton className="h-[200px] w-full" />
         ) : detail.isError ? (
           <ErrorState
-            title="Couldn’t load the SKU series"
+            title={`Couldn’t load the ${levelLabel} series`}
             message={detail.error?.message}
             onRetry={() => void detail.refetch().catch(() => {})}
           />

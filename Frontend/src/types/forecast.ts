@@ -109,6 +109,9 @@ export interface RunForecastPayload {
   samplePerStrategy?: number;
   /** Algorithm keys to benchmark per SKU (champion picked from this set). */
   compareAlgos?: string[];
+  /** Per-segment SECONDARY model keys — extra candidates merged into each item's
+   *  pool by its segment (Phase X.X.2). Champion stays lowest-WMAPE. */
+  segmentSecondary?: Record<string, string[]>;
   /** Auto-select the champion via K-fold cross-validation. */
   cvMode?: boolean;
   reconcile?: boolean;

@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Check as CheckRow } from "@/features/data/controls";
 import { cn } from "@/lib/utils";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type {
   SubmissionFacets,
   SubmissionFilterState,
@@ -116,6 +117,7 @@ export function SubmissionFilters({
   summary: string;
   onChange: (next: SubmissionFilterState) => void;
 }) {
+  const { label: levelLabel } = useForecastLevel();
   const active =
     filters.category.length > 0 ||
     filters.brand.length > 0 ||
@@ -153,7 +155,7 @@ export function SubmissionFilters({
           onChange={(segment) => onChange({ ...filters, segment })}
         />
         <MultiSelect
-          label="SKU"
+          label={levelLabel}
           options={facets.skus}
           selected={filters.sku}
           onChange={(sku) => onChange({ ...filters, sku })}

@@ -9,8 +9,8 @@ import { Field, Select } from "@/features/data/controls";
 import type { SubmissionBulk } from "@/types/submission";
 
 /**
- * Bulk actions on the current filter — uplift %, copy LY same month, reset to
- * model, and bulk-set reason. Each maps to a single PATCH {bulk, filter}.
+ * Bulk actions on the current filter — apply % changes, copy LY same month,
+ * reset to model, and bulk-set reason. Each maps to a single PATCH {bulk, filter}.
  */
 export function SubmissionBulkActions({
   reasonOptions,
@@ -38,7 +38,7 @@ export function SubmissionBulkActions({
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Field label="Apply % uplift">
+        <Field label="Apply % Changes">
           <div className="flex items-center gap-2">
             <Input
               type="number"
@@ -46,7 +46,7 @@ export function SubmissionBulkActions({
               value={uplift}
               onChange={(e) => setUplift(e.target.value)}
               className="h-9 w-24 tabular-nums"
-              aria-label="Uplift percent"
+              aria-label="Percent change"
             />
             <Button
               variant="outline"

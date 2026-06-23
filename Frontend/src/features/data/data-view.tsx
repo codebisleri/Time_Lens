@@ -12,6 +12,7 @@ import { formatDate, formatFrequency, formatNumber } from "@/lib/utils/format";
 import { routes } from "@/lib/constants/routes";
 import { dataService } from "@/lib/api/services";
 import { useEdaStore } from "@/lib/stores/eda-store";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import { WorkflowHero } from "@/features/workflow/workflow-hero";
 import { ContinueButton } from "@/features/workflow/continue-button";
 import { useDatasets } from "@/features/data-upload/hooks/use-datasets";
@@ -36,6 +37,7 @@ function isNumericDtype(dtype: string): boolean {
  * Upload and Prepare are merged into one page.
  */
 export function DataView() {
+  const { label: levelLabel, plural: levelPlural } = useForecastLevel();
   const datasets = useDatasets();
   const active = useMemo<Dataset | null>(() => datasets.data?.[0] ?? null, [datasets.data]);
 
@@ -150,7 +152,7 @@ export function DataView() {
         metrics={
           active
             ? [
-                { label: "SKUs", value: formatNumber(active.skuCount ?? 0) },
+                { label: levelPlural, value: formatNumber(active.skuCount ?? 0) },
                 { label: "Observations", value: formatNumber(active.rowCount ?? 0) },
                 {
                   label: "Frequency",
@@ -196,7 +198,7 @@ export function DataView() {
         <EmptyState
           icon={Database}
           title="No dataset yet"
-          description="Upload a CSV/XLSX with date, SKU, and quantity columns to begin."
+          description={`Upload a CSV/XLSX with date, ${levelLabel}, and quantity columns to begin.`}
         />
       ) : (
         <>

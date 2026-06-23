@@ -20,6 +20,7 @@ export const routes = {
   // Canonical Streamlit-parity modules (8-stage workflow).
   forecast: "/forecast",
   forecastSubmission: "/forecast-submission",
+  explainability: "/explainability",
   report: "/report",
   // Legacy routes retained for deep links / breadcrumbs (delinked from sidebar).
   forecasts: "/forecasts",
@@ -54,6 +55,7 @@ export const ROUTE_LABELS: Record<string, string> = {
   profile: "Profile & Route",
   forecast: "Forecast",
   "forecast-submission": "Forecast Submission",
+  explainability: "Explainability",
   report: "Report",
   forecasts: "Forecast Results",
   configure: "Forecast Configuration",

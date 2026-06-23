@@ -15,3 +15,16 @@ export function downloadFile(
   a.click();
   URL.revokeObjectURL(url);
 }
+
+/**
+ * Trigger a client-side download from a data URL (e.g. an ECharts `getDataURL()`
+ * PNG). Distinct from {@link downloadFile} because the content is already an
+ * encoded URL, not raw text to be Blob-wrapped.
+ */
+export function downloadDataUrl(filename: string, dataUrl: string): void {
+  if (typeof document === "undefined" || !dataUrl) return;
+  const a = document.createElement("a");
+  a.href = dataUrl;
+  a.download = filename;
+  a.click();
+}

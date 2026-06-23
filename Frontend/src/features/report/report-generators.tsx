@@ -4,18 +4,12 @@ import { Download, FileText, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatDateTime } from "@/lib/utils/format";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type {
   GeneratedReport,
   ReportCatalogItem,
   ReportKind,
 } from "@/types/report";
-
-const DESCRIPTIONS: Record<ReportKind, string> = {
-  segmentation:
-    "Six-segment matrix with playbook, portfolio distribution, brand × segment breakdown and hero SKUs.",
-  routed_forecast:
-    "Routing summary, per-strategy split and the per-SKU routed forecast table.",
-};
 
 function sizeLabel(bytes: number | null): string {
   if (bytes == null) return "";
@@ -43,6 +37,11 @@ export function ReportGenerators({
   onGenerate: (type: ReportKind) => void;
   onDownload: (report: GeneratedReport) => void;
 }) {
+  const { label: levelLabel, plural: levelPlural } = useForecastLevel();
+  const descriptions: Record<ReportKind, string> = {
+    segmentation: `Six-segment matrix with playbook, portfolio distribution, brand × segment breakdown and hero ${levelPlural}.`,
+    routed_forecast: `Routing summary, per-strategy split and the per-${levelLabel.toLowerCase()} routed forecast table.`,
+  };
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       {catalog.map((item) => {
@@ -57,7 +56,7 @@ export function ReportGenerators({
               <div className="space-y-1">
                 <p className="font-medium text-foreground">{item.title}</p>
                 <p className="text-xs text-muted-foreground">
-                  {DESCRIPTIONS[item.type]}
+                  {descriptions[item.type]}
                 </p>
               </div>
             </div>

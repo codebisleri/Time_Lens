@@ -6,6 +6,7 @@ import {
   TrendingUp,
   ClipboardCheck,
   Gauge,
+  PieChart,
   SlidersHorizontal,
   FileBarChart,
   type LucideIcon,
@@ -87,12 +88,13 @@ export const NAV_SECTIONS: NavSection[] = [
         label: "Profile & Route",
         href: routes.profile,
         icon: Layers,
+        // Phase X.O — the Routing / Algorithm-Portfolio display sections were
+        // removed; their nav entries go with them (the routing engine is
+        // unchanged). Remaining in-page anchors only.
         sections: [
           { label: "Overview", anchor: "overview" },
           { label: "Segmentation", anchor: "segmentation" },
-          { label: "Routing", anchor: "routing" },
-          { label: "Algorithm Portfolio", anchor: "algorithm-portfolio" },
-          { label: "SKU Profiles", anchor: "sku-profiles" },
+          { label: "Profiles", anchor: "sku-profiles" },
         ],
       },
     ],
@@ -116,6 +118,19 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: ClipboardCheck,
       },
       { label: "Performance", href: routes.performance, icon: Gauge },
+      // Phase X.U — read-only explainability step: Forecast → Explainability → Scenario.
+      {
+        label: "Explainability",
+        href: routes.explainability,
+        icon: PieChart,
+        sections: [
+          { label: "Summary", anchor: "summary" },
+          { label: "Driver Contribution", anchor: "drivers" },
+          { label: "Model Explanation", anchor: "model" },
+          { label: "Forecast Bridge", anchor: "local" },
+          { label: "By Horizon", anchor: "horizon" },
+        ],
+      },
     ],
   },
   {

@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Save, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import type { DataConfig, Dataset } from "@/types/dataset";
 import { formatForecastLevel } from "@/lib/utils/format";
-import { Check, Field, NONE, NumberInput, Select, columnOptions, type Opt } from "./controls";
+import { Check, Field, NONE, Select, columnOptions, type Opt } from "./controls";
+import { NumericInput } from "@/components/ui/numeric-input";
 
 // Exact Streamlit date_format_options (keys + ordering); labels carry the same
 // "(e.g. …)" hints Streamlit shows. Values map to the backend strftime table.
@@ -34,16 +35,25 @@ const FREQS: Opt[] = [
   { value: "YS", label: "Yearly" },
 ];
 
+// Phase X.Q · Task 6 — granularity rank (finer → coarser). A forecast can never
+// be FINER than the detected history cadence, so any option ranked below the
+// history's rank is disabled (Weekly history ⇒ no Daily; Yearly ⇒ Yearly only).
+function freqRank(f: string | null | undefined): number {
+  const s = String(f ?? "").trim().toUpperCase();
+  if (s.startsWith("D")) return 0;
+  if (s.startsWith("W")) return 1;
+  if (s.startsWith("Q")) return 3;
+  if (s.startsWith("Y") || s.startsWith("A")) return 4;
+  if (s.startsWith("M")) return 2;
+  return 2; // default: monthly
+}
+const FREQ_LABEL: Record<number, string> = {
+  0: "daily", 1: "weekly", 2: "monthly", 3: "quarterly", 4: "yearly",
+};
+
 const HOLIDAY: Opt[] = ["IN", "US", "GB", "AU", "CA", "DE", "FR", "JP", "SG", "AE"].map(
   (v) => ({ value: v, label: v }),
 );
-
-// Streamlit "How to split the aggregate back to each SKU" (3b).
-const DISAGG: Opt[] = [
-  { value: "Historical average share", label: "Historical average share" },
-  { value: "Recent share (last 6 periods)", label: "Recent share (last 6 periods)" },
-  { value: "Equal share within group", label: "Equal share within group" },
-];
 
 export const EXOG_STRATEGIES: Opt[] = [
   { value: "auto", label: "Auto (recommended)" },
@@ -110,7 +120,39 @@ export function DataConfigForm({
   saving: boolean;
 }) {
   const [cfg, setCfg] = useState<DataConfig>(() => defaultConfig(dataset));
+  // Task 2 — Forecast Horizon must be valid (1–36) before the config can be saved.
+  const [horizonValid, setHorizonValid] = useState(true);
+  // Phase X.T · Task 1 — routing thresholds must be valid before saving.
+  const [coldValid, setColdValid] = useState(true);
+  const [shortValid, setShortValid] = useState(true);
   const columns = useMemo(() => dataset.columns ?? [], [dataset.columns]);
+
+  // Phase X.Q · Task 6 — forecast frequencies finer than the detected history
+  // cadence are greyed out (with a tooltip) and cannot be chosen.
+  const historyRank = freqRank(dataset.frequency);
+  const freqOptions = useMemo<Opt[]>(
+    () =>
+      FREQS.map((o) => {
+        const disabled = freqRank(o.value) < historyRank;
+        return disabled
+          ? {
+              ...o,
+              disabled: true,
+              title: `${o.label} unavailable for ${FREQ_LABEL[historyRank]} historical data.`,
+            }
+          : o;
+      }),
+    [historyRank],
+  );
+  // Never leave an invalid (too-fine) frequency selected — snap up to the
+  // coarsest-but-still-valid (= the history cadence) option.
+  useEffect(() => {
+    if (freqRank(cfg.freq) < historyRank) {
+      const fallback = FREQS.find((o) => freqRank(o.value) === historyRank) ?? FREQS[0]!;
+      set("freq", fallback.value);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyRank]);
 
   const set = <K extends keyof DataConfig>(key: K, value: DataConfig[K]) =>
     setCfg((c) => ({ ...c, [key]: value }));
@@ -171,7 +213,6 @@ export function DataConfigForm({
     { label: "Frequency", value: freqLabel },
     { label: "Horizon", value: `${cfg.horizon} periods` },
     { label: "Forecast Level", value: levelLabel },
-    { label: "Top-Down", value: cfg.topDownEnabled ? "On" : "Off" },
   ];
 
   // Group/level candidates = all columns except date/sales/sku (Streamlit parity).
@@ -189,8 +230,6 @@ export function DataConfigForm({
       return { ...c, [key]: has ? arr.filter((x) => x !== col) : [...arr, col] };
     });
 
-  const setTopDownApply = (k: keyof DataConfig["topDownApply"], v: boolean) =>
-    setCfg((c) => ({ ...c, topDownApply: { ...c.topDownApply, [k]: v } }));
 
   return (
     <Card className="glass">
@@ -322,13 +361,19 @@ export function DataConfigForm({
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Field label="Forecast Frequency">
-              <Select ariaLabel="Forecast Frequency" value={cfg.freq} onChange={(v) => set("freq", v)} options={FREQS} />
+              <Select ariaLabel="Forecast Frequency" value={cfg.freq} onChange={(v) => set("freq", v)} options={freqOptions} />
             </Field>
             <Field label="Forecast Horizon">
-              <NumberInput
+              {/* Task 2 — 1–36 months, validated (red border + message), gates Save. */}
+              <NumericInput
                 min={1} max={36} value={cfg.horizon}
                 onChange={(v) => set("horizon", v)}
+                onValidityChange={setHorizonValid}
+                hardLimit
                 ariaLabel="Forecast Horizon"
+                label="Forecast horizon"
+                unit="months"
+                helperText="Number of future periods to project (1–36)."
               />
             </Field>
             {/* Start Date — empty = full dataset history; a date narrows it (Part 7). */}
@@ -354,75 +399,34 @@ export function DataConfigForm({
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Cold-Start">
-              <NumberInput
+              {/* Phase X.T · Task 1 — same validated NumericInput as Forecast
+                  Horizon (1–24, red border + message, gates Save). */}
+              <NumericInput
                 min={1} max={24} value={cfg.coldStartMonths}
                 onChange={(v) => set("coldStartMonths", v)}
-                ariaLabel="Cold-Start"
+                onValidityChange={setColdValid}
+                hardLimit
+                ariaLabel="Cold-Start months"
+                label="Cold-Start"
+                unit="months"
               />
             </Field>
             <Field label="Short-History">
-              <NumberInput
+              <NumericInput
                 min={1} max={36} value={cfg.shortHistoryMonths}
                 onChange={(v) => set("shortHistoryMonths", v)}
-                ariaLabel="Short-History"
+                onValidityChange={setShortValid}
+                hardLimit
+                ariaLabel="Short-History months"
+                label="Short-History"
+                unit="months"
               />
             </Field>
           </div>
         </section>
 
-        {/* Top-Down Forecasting (3b) — F.7 parity */}
-        <section className="space-y-3">
-          <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
-            Top-Down Forecasting
-          </p>
-          <Check
-            checked={cfg.topDownEnabled}
-            onChange={(v) => set("topDownEnabled", v)}
-            label="Enable Top-Down for New / Sparse / Noisy Items"
-          />
-          <p className="text-xs text-muted-foreground">
-            Forecast a stable aggregate, then split it back to hard-to-forecast
-            items by their share.
-          </p>
-          {cfg.topDownEnabled ? (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <Field label="Aggregate to level(s)">
-                <div className="max-h-40 space-y-1.5 overflow-auto rounded-md border border-border p-2">
-                  {levelCandidates.length ? (
-                    levelCandidates.map((c) => (
-                      <Check
-                        key={c}
-                        label={formatForecastLevel(c)}
-                        checked={cfg.topDownLevels.includes(c)}
-                        onChange={() => toggleArr("topDownLevels", c)}
-                      />
-                    ))
-                  ) : (
-                    <p className="text-xs text-muted-foreground">No aggregate columns.</p>
-                  )}
-                </div>
-              </Field>
-              <div className="space-y-3">
-                <Field label="Apply top-down to which SKUs?">
-                  <div className="space-y-1.5 rounded-md border border-border p-2">
-                    <Check label="New / cold-start SKUs" checked={cfg.topDownApply.cold} onChange={(v) => setTopDownApply("cold", v)} />
-                    <Check label="Short-history SKUs" checked={cfg.topDownApply.short} onChange={(v) => setTopDownApply("short", v)} />
-                    <Check label="Lumpy / intermittent SKUs" checked={cfg.topDownApply.lumpy} onChange={(v) => setTopDownApply("lumpy", v)} />
-                    <Check label="Noisy (high variability) SKUs" checked={cfg.topDownApply.noisy} onChange={(v) => setTopDownApply("noisy", v)} />
-                  </div>
-                </Field>
-                <Field label="How to split the aggregate back to each SKU">
-                  <Select
-                    ariaLabel="Disaggregation method"
-                    value={cfg.topDownDisagg}
-                    onChange={(v) => set("topDownDisagg", v)}
-                    options={DISAGG}
-                  />
-                </Field>
-              </div>
-            </div>
-          ) : null}
-        </section>
+        {/* Top-Down Forecasting moved to the Run Forecast dialog (Phase Y.3 ·
+            Task 1) — configured at run time, not on the Configuration page. */}
 
         {/* Holiday Calendar (Missing & Outlier handling removed — Part 8) */}
         <section className="space-y-3">
@@ -485,7 +489,7 @@ export function DataConfigForm({
         </section>
 
         <div className="flex justify-end">
-          <Button onClick={() => onSave(cfg)} disabled={saving}>
+          <Button onClick={() => onSave(cfg)} disabled={saving || !horizonValid || !coldValid || !shortValid}>
             <Save className="size-4" /> Save configuration
           </Button>
         </div>

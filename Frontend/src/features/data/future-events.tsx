@@ -156,6 +156,16 @@ export function FutureEvents({
   const setCell = (i: number, key: keyof FutureEvent, value: string) =>
     setRows((rs) => rs.map((r, idx) => (idx === i ? { ...r, [key]: value } : r)));
 
+  // Phase X.Q · Task 5 — never report a false "saved" when there is no event
+  // calendar. With zero rows (no file uploaded / all removed), block the save.
+  const handleSave = () => {
+    if (rows.length === 0) {
+      toast.error("Please upload an event calendar before saving.");
+      return;
+    }
+    onSave(rows);
+  };
+
   const downloadTemplate = async () => {
     try {
       const csv = await dataService.eventsTemplate();
@@ -298,7 +308,12 @@ export function FutureEvents({
           <Button variant="outline" size="sm" onClick={() => setRows((rs) => [...rs, emptyRow()])}>
             <Plus className="size-4" /> Add event
           </Button>
-          <Button size="sm" onClick={() => onSave(rows)} disabled={saving}>
+          <Button
+            size="sm"
+            onClick={handleSave}
+            disabled={saving || rows.length === 0}
+            title={rows.length === 0 ? "Upload an event calendar before saving" : undefined}
+          >
             <Save className="size-4" /> Save events
           </Button>
         </div>

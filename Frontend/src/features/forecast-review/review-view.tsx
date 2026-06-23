@@ -17,6 +17,7 @@ import type { ForecastSummary } from "@/types/forecast";
 import { WorkflowLock } from "@/features/workflow/workflow-lock";
 import { useWorkflowStatus } from "@/features/workflow/use-workflow-status";
 import { routes } from "@/lib/constants/routes";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import { ReviewDrawer } from "./review-drawer";
 import {
   DECISION_LABEL,
@@ -66,6 +67,7 @@ function StatCard({
  */
 export function ForecastReviewView() {
   const workflow = useWorkflowStatus();
+  const { label: levelLabel } = useForecastLevel();
   const forecasts = useAsync(
     () => forecastService.list({ page: 1, pageSize: 500 }),
     [],
@@ -133,7 +135,7 @@ export function ForecastReviewView() {
     () => [
       {
         accessorKey: "skuCode",
-        header: "SKU",
+        header: levelLabel,
         cell: ({ row }) => (
           <div className="flex flex-col">
             <span className="font-mono text-xs font-medium text-foreground">
@@ -194,7 +196,7 @@ export function ForecastReviewView() {
         },
       },
     ],
-    [reviews],
+    [reviews, levelLabel],
   );
 
   const gated =

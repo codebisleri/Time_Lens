@@ -16,6 +16,7 @@ import { ErrorState } from "@/components/feedback/error-state";
 import { formatNumber } from "@/lib/utils/format";
 import { routes } from "@/lib/constants/routes";
 import { useUploadStore } from "@/lib/stores";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import { dataService } from "@/lib/api/services";
 import { useDatasets } from "./hooks/use-datasets";
 import { UploadHero, UploadHeroSkeleton } from "./upload-hero";
@@ -68,6 +69,7 @@ function MetricTile({
  * (Data Preparation).
  */
 export function DataUploadView() {
+  const { label: levelLabel, plural: levelPlural } = useForecastLevel();
   const datasets = useDatasets();
 
   const file = useUploadStore((s) => s.file);
@@ -188,7 +190,7 @@ export function DataUploadView() {
         <CardHeader>
           <CardTitle className="text-base">Upload data file</CardTitle>
           <CardDescription>
-            CSV or XLSX with date, SKU, and quantity columns.
+            CSV or XLSX with date, {levelLabel}, and quantity columns.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -226,7 +228,7 @@ export function DataUploadView() {
               />
               <MetricTile
                 icon={Boxes}
-                label="SKUs detected"
+                label={`${levelPlural} detected`}
                 value={metrics.skuCount}
               />
             </div>

@@ -17,7 +17,19 @@ import { workspaceService } from "@/lib/api/services/workspace.service";
 const ACTIVE_FORECAST_JOB_KEY = "tl_active_forecast_job";
 
 // Persisted store keys to purge so a hard reload after a reset is also clean.
-const PERSISTED_KEYS = ["tl-eda-state", "tl-filters", "tl-sku-view", ACTIVE_FORECAST_JOB_KEY];
+// Includes the newer planning/preference stores (Phase Y.0) so a workspace reset
+// leaves no stale SKU/segment/brand/model selections referencing purged datasets.
+const PERSISTED_KEYS = [
+  "tl-eda-state",
+  "tl-filters",
+  "tl-sku-view",
+  "scenario-planning", // scenario-planning-store (what-if + causal selections)
+  "explainability-filters", // explainability-filter-store (brand/segment filters)
+  "forecast-prefs", // forecast-store (segment overrides / secondary models / benchmarks)
+  "forecast-filters", // forecast-filters-store
+  "forecast-level", // forecast-level-store (terminology, dataset-derived)
+  ACTIVE_FORECAST_JOB_KEY,
+];
 
 /** Reset every forecasting-workspace Zustand store (NOT ui-store/auth). */
 function resetWorkspaceStores(): void {

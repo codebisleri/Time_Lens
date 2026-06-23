@@ -29,6 +29,10 @@ Backend/.venv/
 *.sqlite
 *.sqlite3
 
+# Runtime-uploaded datasets — per-upload CSVs the backend writes to api_data/
+# at runtime (machine-specific; not for distribution).
+Backend/api_data/
+
 # Large release binaries — keep the docs/notes, drop the installers
 *.exe
 *.dmg
@@ -36,6 +40,8 @@ Backend/.venv/
 *.7z
 *.blockmap
 *.app/
+# macOS packaging output (electron-builder) — incl. latest-mac.yml update feed
+Frontend/MAC/
 
 # Environment / secrets
 .env

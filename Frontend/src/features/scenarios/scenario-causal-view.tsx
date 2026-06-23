@@ -1,0 +1,569 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { EChartsOption } from "echarts";
+import { Loader2, Play, Trophy, Download, GitBranch } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/feedback/empty-state";
+import { EChartBase } from "@/components/charts/echart-base";
+import { useThemeMode } from "@/lib/theme/use-theme-mode";
+import { useAsync } from "@/lib/hooks";
+import { forecastService, whatifService } from "@/lib/api/services";
+import { formatNumber } from "@/lib/utils/format";
+import { downloadFile } from "@/lib/utils/download";
+import { useScenarioPlanningStore } from "@/lib/stores/scenario-planning-store";
+import type { ForecastJob } from "@/types/forecast";
+import type { CausalRunResult, DriversResult } from "@/types/whatif";
+
+const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const POLL_MS = 2500;
+const MAX_WAIT_MS = 12 * 60 * 1000;
+
+const REFUTERS: { id: string; label: string }[] = [
+  { id: "random_common_cause", label: "Add random common cause" },
+  { id: "placebo_treatment_refuter", label: "Placebo treatment" },
+  { id: "data_subset_refuter", label: "Random subset (80%)" },
+  { id: "add_unobserved_common_cause", label: "Unobserved confounder" },
+];
+
+// Estimator catalog (parity with scenario_engine.causal_estimator_catalog). The
+// first selected method is the headline number.
+const METHODS: { id: string; label: string }[] = [
+  { id: "backdoor.linear_regression", label: "Linear regression" },
+  { id: "backdoor.generalized_linear_model", label: "Generalized linear model (GLM)" },
+  { id: "backdoor.propensity_score_matching", label: "Propensity score matching (binary)" },
+  { id: "backdoor.propensity_score_stratification", label: "Propensity score stratification (binary)" },
+  { id: "backdoor.propensity_score_weighting", label: "Propensity score weighting / IPW (binary)" },
+  { id: "backdoor.distance_matching", label: "Distance matching (binary)" },
+];
+
+function fmt(v: number | null | undefined, digits = 1): string {
+  return v == null || !Number.isFinite(v) ? "—" : formatNumber(v, { maximumFractionDigits: digits, minimumFractionDigits: digits });
+}
+
+/** Lightweight checkbox multiselect (no external dep). */
+function Multi({
+  label,
+  options,
+  value,
+  onChange,
+  exclude = [],
+}: {
+  label: string;
+  options: string[];
+  value: string[];
+  onChange: (v: string[]) => void;
+  exclude?: string[];
+}) {
+  const pool = options.filter((o) => !exclude.includes(o));
+  const toggle = (o: string) =>
+    onChange(value.includes(o) ? value.filter((x) => x !== o) : [...value, o]);
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-medium text-foreground">{label}</p>
+      <div className="flex max-h-32 flex-wrap gap-1.5 overflow-auto rounded-md border border-input bg-background p-2">
+        {pool.length === 0 ? (
+          <span className="text-xs text-muted-foreground">No columns available.</span>
+        ) : (
+          pool.map((o) => (
+            <button
+              key={o}
+              type="button"
+              onClick={() => toggle(o)}
+              className={
+                "rounded-full border px-2.5 py-1 text-xs transition-colors " +
+                (value.includes(o)
+                  ? "border-primary bg-primary/15 text-primary"
+                  : "border-border text-muted-foreground hover:bg-secondary/50")
+              }
+            >
+              {o}
+            </button>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function reliabilityClasses(level: string): string {
+  if (level === "success") return "border-success/30 bg-success/10 text-success";
+  if (level === "warning") return "border-warning/40 bg-warning/10 text-foreground";
+  return "border-border bg-secondary/40 text-foreground";
+}
+
+/** Drivers ranking bar chart (parity with px.bar horizontal "which levers move demand most"). */
+function DriversChart({ data }: { data: DriversResult }) {
+  const { resolvedMode } = useThemeMode();
+  const option = useMemo<EChartsOption>(() => {
+    void resolvedMode;
+    const rows = [...data.ranked].slice(0, 15).reverse(); // total ascending
+    return {
+      animationDuration: 500,
+      grid: { left: 4, right: 40, top: 8, bottom: 4, containLabel: true },
+      tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+      xAxis: { type: "value", name: "Impact on demand" },
+      yAxis: { type: "category", data: rows.map((r) => r.Lever), axisTick: { show: false } },
+      series: [
+        {
+          type: "bar",
+          barWidth: "60%",
+          data: rows.map((r) => ({
+            value: r["Impact on demand"],
+            itemStyle: { color: (r["Impact on demand"] ?? 0) >= 0 ? "#16a34a" : "#dc2626" },
+          })),
+          label: { show: true, position: "right", formatter: (p) => fmt(p.value as number) },
+          itemStyle: { borderRadius: [0, 4, 4, 0] },
+        },
+      ],
+    };
+  }, [data, resolvedMode]);
+  return <EChartBase option={option} height={Math.max(220, Math.min(15, data.ranked.length) * 26 + 40)} />;
+}
+
+/** Causal effect per treatment (per +1 unit) — clear bar chart with units,
+ *  legend-free, green positive / red negative (Phase X.ZZ.2 · Task 4). */
+function CausalEffectsChart({ estimates }: { estimates: CausalRunResult["estimates"] }) {
+  const { resolvedMode } = useThemeMode();
+  const option = useMemo<EChartsOption>(() => {
+    void resolvedMode;
+    const rows = estimates
+      .filter((e) => e["Causal Effect (per +1 unit)"] != null)
+      .map((e) => ({ name: e.Treatment, value: e["Causal Effect (per +1 unit)"] as number }))
+      .sort((a, b) => Math.abs(a.value) - Math.abs(b.value)); // ascending → biggest on top
+    return {
+      animationDuration: 500,
+      grid: { left: 4, right: 56, top: 8, bottom: 4, containLabel: true },
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        valueFormatter: (v) => `${fmt(v as number, 2)} units / +1 unit`,
+      },
+      xAxis: { type: "value", name: "Effect on demand (units per +1 unit of lever)" },
+      yAxis: { type: "category", data: rows.map((r) => r.name), axisTick: { show: false } },
+      series: [
+        {
+          type: "bar",
+          barWidth: "60%",
+          data: rows.map((r) => ({ value: r.value, itemStyle: { color: r.value >= 0 ? "#16a34a" : "#dc2626" } })),
+          label: { show: true, position: "right", formatter: (p) => fmt(p.value as number, 2) },
+          itemStyle: { borderRadius: [0, 4, 4, 0] },
+        },
+      ],
+    };
+  }, [estimates, resolvedMode]);
+  return <EChartBase option={option} height={Math.max(180, Math.min(estimates.length, 12) * 30 + 40)} />;
+}
+
+/** One-line plain-language summary of the dominant causal driver (Task 4). */
+function primaryContributorLine(estimates: CausalRunResult["estimates"]): string | null {
+  const valid = estimates.filter((e) => e["Causal Effect (per +1 unit)"] != null);
+  if (!valid.length) return null;
+  const top = valid.reduce((a, b) =>
+    Math.abs(b["Causal Effect (per +1 unit)"]!) > Math.abs(a["Causal Effect (per +1 unit)"]!) ? b : a);
+  const v = top["Causal Effect (per +1 unit)"]!;
+  const dir = v >= 0 ? "increase" : "decrease";
+  const word = v >= 0 ? "uplift" : "reduction";
+  return `${top.Treatment} ${word} is the primary contributor to the projected ${dir} in demand.`;
+}
+
+/**
+ * Causal Effect Estimation (DoWhy) — parity with render_causal_tab. Two tasks:
+ *   • Impact ("How much does a lever move demand?") — estimate effects + elasticity
+ *     + reliability cross-checks + cross-method comparison + assumed causal DAG.
+ *   • Drivers ("Which levers matter most?") — rank every lever by |impact|.
+ * Read-only: never alters forecasts.
+ */
+export function ScenarioCausalView({ sku }: { sku: string }) {
+  const {
+    treatments, confounders, instruments, effectModifiers, methods, refuters,
+    computeCi, causalTask, setCausal,
+  } = useScenarioPlanningStore();
+
+  const featuresQuery = useAsync(
+    () => (sku ? whatifService.causalFeatures(sku) : Promise.resolve(null)),
+    [sku],
+  );
+  const columns = featuresQuery.data?.columns ?? [];
+  const dowhyAvailable = featuresQuery.data?.available !== false;
+  const exogAccounted = featuresQuery.data?.exogAccountedFor ?? [];
+
+  const [phase, setPhase] = useState<"idle" | "running" | "error">("idle");
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [impact, setImpact] = useState<CausalRunResult | null>(null);
+  const [drivers, setDrivers] = useState<DriversResult | null>(null);
+  const cancelled = useRef(false);
+  useEffect(() => {
+    cancelled.current = false;
+    return () => { cancelled.current = true; };
+  }, []);
+
+  const poll = useCallback(async (start: ForecastJob): Promise<ForecastJob> => {
+    let job = start;
+    let waited = 0;
+    while (job.status !== "completed" && job.status !== "failed") {
+      await wait(POLL_MS);
+      if (cancelled.current) return job;
+      waited += POLL_MS;
+      if (waited > MAX_WAIT_MS) break;
+      try { job = await forecastService.getJob(job.id); } catch { /* transient */ }
+      setProgress(job.progress ?? 0);
+    }
+    return job;
+  }, []);
+
+  const runImpact = useCallback(async () => {
+    if (!sku || treatments.length === 0) return;
+    setPhase("running"); setProgress(0); setError(null);
+    try {
+      const job = await poll(await whatifService.causalRun({
+        skuId: sku, treatments, confounders, instruments, effectModifiers,
+        methods, refuters, computeCi,
+      }));
+      if (cancelled.current) return;
+      if (job.status === "failed") { setError(job.error ?? "Causal run failed."); setPhase("error"); return; }
+      setImpact((job.result as CausalRunResult) ?? null);
+      setPhase("idle");
+    } catch (e) {
+      if (!cancelled.current) { setError((e as { message?: string })?.message ?? "Causal run failed."); setPhase("error"); }
+    }
+  }, [sku, treatments, confounders, instruments, effectModifiers, methods, refuters, computeCi, poll]);
+
+  const runDrivers = useCallback(async () => {
+    if (!sku) return;
+    setPhase("running"); setProgress(0); setError(null);
+    try {
+      const job = await poll(await whatifService.causalDrivers({ skuId: sku, useAllConfounders: true }));
+      if (cancelled.current) return;
+      if (job.status === "failed") { setError(job.error ?? "Driver ranking failed."); setPhase("error"); return; }
+      setDrivers((job.result as DriversResult) ?? null);
+      setPhase("idle");
+    } catch (e) {
+      if (!cancelled.current) { setError((e as { message?: string })?.message ?? "Driver ranking failed."); setPhase("error"); }
+    }
+  }, [sku, poll]);
+
+  const exportEstimatesCsv = useCallback(() => {
+    if (!impact) return;
+    const head = ["Lever", "Causal effect per +1 unit", "Elasticity % per +1%", "Robustness", "Interpretation"];
+    const rows = impact.estimates.map((e) => [
+      e.Treatment,
+      e["Causal Effect (per +1 unit)"] ?? "",
+      e["Elasticity (% per +1%)"] ?? "",
+      e.Robustness,
+      `"${(e.Interpretation || "").replace(/"/g, '""').replace(/\*/g, "")}"`,
+    ].join(","));
+    downloadFile(`causal-estimates-${sku}.csv`, [head.join(","), ...rows].join("\r\n"));
+  }, [impact, sku]);
+
+  const running = phase === "running";
+
+  if (!dowhyAvailable) {
+    return (
+      <EmptyState
+        title="Causal analysis unavailable"
+        description={featuresQuery.data?.message || "Install dowhy and graphviz on the server to enable Causal Effect Estimation."}
+      />
+    );
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Causal Effect Estimation (DoWhy)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Most charts show what <em>moves together</em> with demand. Causal AI answers: <strong>if I
+            change this lever, how much will demand actually move?</strong> — adjusting for your other drivers.
+          </p>
+          {exogAccounted.length ? (
+            <p className="text-xs text-success">
+              ✅ Accounting for {exogAccounted.length} configured driver(s): {exogAccounted.join(", ")}
+            </p>
+          ) : null}
+
+          {/* Task selector (parity with the causal task selectbox) */}
+          <div className="flex flex-wrap gap-2">
+            {([["impact", "📈 How much does a lever move demand?"], ["drivers", "🏆 Which levers matter most?"]] as const).map(
+              ([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setCausal({ causalTask: id })}
+                  className={
+                    "rounded-md border px-3 py-1.5 text-sm transition-colors " +
+                    (causalTask === id
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:bg-secondary/50")
+                  }
+                >
+                  {label}
+                </button>
+              ),
+            )}
+          </div>
+
+          {featuresQuery.isLoading ? (
+            <Skeleton className="h-24 w-full" />
+          ) : causalTask === "impact" ? (
+            <div className="space-y-3">
+              <Multi
+                label="Lever(s) to test (treatments)"
+                options={columns}
+                value={treatments}
+                onChange={(v) => setCausal({ treatments: v })}
+              />
+              <details className="rounded-md border border-border/60 p-3">
+                <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+                  ⚙️ Advanced settings (defaults work for most cases)
+                </summary>
+                <div className="mt-3 space-y-3">
+                  <Multi
+                    label="Other factors to adjust for (confounders)"
+                    options={columns}
+                    value={confounders}
+                    onChange={(v) => setCausal({ confounders: v })}
+                    exclude={treatments}
+                  />
+                  <Multi
+                    label="Instruments (a nudge that moves the lever but not demand directly)"
+                    options={columns}
+                    value={instruments}
+                    onChange={(v) => setCausal({ instruments: v })}
+                    exclude={[...treatments, ...confounders]}
+                  />
+                  <Multi
+                    label="Segments the effect may differ across (effect modifiers)"
+                    options={columns}
+                    value={effectModifiers}
+                    onChange={(v) => setCausal({ effectModifiers: v })}
+                    exclude={treatments}
+                  />
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-foreground">Calculation method(s) — the first is the headline number</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {METHODS.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() =>
+                            setCausal({
+                              methods: methods.includes(m.id)
+                                ? methods.filter((x) => x !== m.id)
+                                : [...methods, m.id],
+                            })
+                          }
+                          className={
+                            "rounded-full border px-2.5 py-1 text-xs transition-colors " +
+                            (methods.includes(m.id)
+                              ? "border-primary bg-primary/15 text-primary"
+                              : "border-border text-muted-foreground hover:bg-secondary/50")
+                          }
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-foreground">Reliability cross-checks</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {REFUTERS.map((r) => (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() =>
+                            setCausal({
+                              refuters: refuters.includes(r.id)
+                                ? refuters.filter((x) => x !== r.id)
+                                : [...refuters, r.id],
+                            })
+                          }
+                          className={
+                            "rounded-full border px-2.5 py-1 text-xs transition-colors " +
+                            (refuters.includes(r.id)
+                              ? "border-primary bg-primary/15 text-primary"
+                              : "border-border text-muted-foreground hover:bg-secondary/50")
+                          }
+                        >
+                          {r.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <label className="flex items-center gap-2 text-xs text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={computeCi}
+                      onChange={(e) => setCausal({ computeCi: e.target.checked })}
+                    />
+                    Show the plausible range (confidence interval)
+                  </label>
+                </div>
+              </details>
+              <Button onClick={() => void runImpact()} disabled={running || treatments.length === 0}>
+                {running ? <><Loader2 className="size-4 animate-spin" /> {`Measuring… ${progress}%`}</> : <><Play className="size-4" /> Measure impact on demand</>}
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Ranks <strong>every</strong> factor by how much it actually moves demand, so you know where to focus first.
+              </p>
+              <Button onClick={() => void runDrivers()} disabled={running}>
+                {running ? <><Loader2 className="size-4 animate-spin" /> {`Ranking… ${progress}%`}</> : <><Trophy className="size-4" /> Rank the levers</>}
+              </Button>
+            </div>
+          )}
+          {phase === "error" ? (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      {/* Impact results */}
+      {causalTask === "impact" && impact ? (
+        <>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-foreground">What we found</h3>
+            <Button variant="outline" size="sm" onClick={exportEstimatesCsv}>
+              <Download className="size-3.5" /> CSV
+            </Button>
+          </div>
+          {/* One-line plain-language summary of the dominant driver (Task 4). */}
+          {primaryContributorLine(impact.estimates) ? (
+            <div className="rounded-md border border-primary/25 bg-primary/5 px-4 py-2.5 text-sm font-medium text-foreground">
+              {primaryContributorLine(impact.estimates)}
+            </div>
+          ) : null}
+          {/* Causal effect bar chart — clear axis/units/tooltip (Task 4). */}
+          {impact.estimates.some((e) => e["Causal Effect (per +1 unit)"] != null) ? (
+            <Card>
+              <CardContent className="space-y-2 pt-6">
+                <p className="text-sm font-medium text-foreground">Causal effect on demand (per +1 unit of each lever)</p>
+                <CausalEffectsChart estimates={impact.estimates} />
+              </CardContent>
+            </Card>
+          ) : null}
+          {impact.estimates.map((e) => {
+            const theta = e["Causal Effect (per +1 unit)"];
+            const elas = e["Elasticity (% per +1%)"];
+            return (
+              <Card key={e.Treatment}>
+                <CardContent className="space-y-3 pt-6">
+                  <p className="text-sm font-semibold text-foreground">{e.Treatment}</p>
+                  {theta == null ? (
+                    <p className="text-sm text-muted-foreground">{e.Interpretation}</p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div className="rounded-md border border-border bg-secondary/30 p-3">
+                          <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Impact of +1 unit</p>
+                          <p className="text-2xl font-semibold tabular-nums text-foreground">{fmt(theta)} units</p>
+                        </div>
+                        {elas != null ? (
+                          <div className="rounded-md border border-border bg-secondary/30 p-3">
+                            <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Sensitivity</p>
+                            <p className="text-2xl font-semibold tabular-nums text-foreground">{fmt(elas)}% per 1%</p>
+                          </div>
+                        ) : null}
+                      </div>
+                      <p className="text-sm text-foreground">{e.Interpretation.replace(/\*\*/g, "")}</p>
+                      <div className={"rounded-md border px-3 py-2 text-sm " + reliabilityClasses(e.reliabilityLevel)}>
+                        <strong>{e.reliabilityHead}</strong> — {e.reliabilityExpl}
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+
+          {/* Technical detail */}
+          <Card>
+            <CardContent className="space-y-4 pt-6">
+              <details>
+                <summary className="cursor-pointer text-sm font-medium text-foreground">🔬 Technical details (for analysts)</summary>
+                <div className="mt-3 space-y-5">
+                  {impact.methodComparison.length ? (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">Cross-method comparison — same effect, several ways. Close agreement = trustworthy.</p>
+                      <div className="overflow-auto rounded-md border border-border">
+                        <table className="w-full text-sm">
+                          <thead className="bg-secondary/40 text-xs uppercase tracking-wide text-muted-foreground">
+                            <tr><th className="px-3 py-1.5 text-left">Lever</th><th className="px-3 py-1.5 text-left">Method</th><th className="px-3 py-1.5 text-right">Effect</th><th className="px-3 py-1.5 text-right">CI low</th><th className="px-3 py-1.5 text-right">CI high</th><th className="px-3 py-1.5 text-right">p-value</th></tr>
+                          </thead>
+                          <tbody>
+                            {impact.methodComparison.map((m, i) => (
+                              <tr key={i} className="border-t border-border/60">
+                                <td className="px-3 py-1.5">{m.Treatment}</td>
+                                <td className="px-3 py-1.5">{m.Method}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums">{fmt(m["Causal Effect"], 3)}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums">{fmt(m["CI low"], 3)}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums">{fmt(m["CI high"], 3)}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums">{fmt(m["p-value"], 3)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : null}
+                  {impact.refutation.length ? (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground">Reliability cross-checks — a robust effect barely moves (placebo should fall to ~0).</p>
+                      <div className="overflow-auto rounded-md border border-border">
+                        <table className="w-full text-sm">
+                          <thead className="bg-secondary/40 text-xs uppercase tracking-wide text-muted-foreground">
+                            <tr><th className="px-3 py-1.5 text-left">Lever</th><th className="px-3 py-1.5 text-left">Refuter</th><th className="px-3 py-1.5 text-right">Refuted effect</th><th className="px-3 py-1.5 text-left">Verdict</th><th className="px-3 py-1.5 text-right">p-value</th></tr>
+                          </thead>
+                          <tbody>
+                            {impact.refutation.map((r, i) => (
+                              <tr key={i} className="border-t border-border/60">
+                                <td className="px-3 py-1.5">{r.Treatment}</td>
+                                <td className="px-3 py-1.5">{r.Refuter}</td>
+                                <td className="px-3 py-1.5 text-right tabular-nums">{fmt(r["Refuted effect"], 3)}</td>
+                                <td className="px-3 py-1.5"><Badge variant="outline">{r.Verdict}</Badge></td>
+                                <td className="px-3 py-1.5 text-right tabular-nums">{fmt(r["p-value"], 3)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : null}
+                  {impact.dotGraph ? (
+                    <div className="space-y-1">
+                      <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><GitBranch className="size-3.5" /> Assumed causal map (DOT)</p>
+                      <pre className="max-h-48 overflow-auto rounded-md border border-border bg-secondary/30 p-3 text-[11px] text-muted-foreground">{impact.dotGraph}</pre>
+                    </div>
+                  ) : null}
+                </div>
+              </details>
+            </CardContent>
+          </Card>
+        </>
+      ) : null}
+
+      {/* Drivers results */}
+      {causalTask === "drivers" && drivers ? (
+        drivers.ranked.length ? (
+          <Card>
+            <CardContent className="space-y-3 pt-6">
+              <h3 className="text-sm font-medium text-foreground">Which levers move demand the most</h3>
+              <DriversChart data={drivers} />
+            </CardContent>
+          </Card>
+        ) : (
+          <EmptyState title="No rankable levers" description="This forecast level has no varying numeric levers to rank." />
+        )
+      ) : null}
+    </>
+  );
+}

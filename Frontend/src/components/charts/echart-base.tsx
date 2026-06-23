@@ -22,6 +22,9 @@ interface EChartBaseProps {
   /** Inject the shared enterprise toolbar (save / zoom / restore / fullscreen +
    *  scroll-zoom) on cartesian charts. Default true. */
   toolbar?: boolean;
+  /** Receives the live ECharts instance once initialized (and null on dispose).
+   *  Read-only escape hatch for features like PNG export — never mutate state. */
+  onReady?: (chart: echarts.ECharts | null) => void;
 }
 
 // Expand-arrows icon for the custom fullscreen toolbox button.
@@ -45,6 +48,23 @@ function withChartControls(
   // can still set animation, but default-off is the safe, parity-faithful choice.
   if (o.animation === undefined) o.animation = false;
 
+  // Hover stability — disable series emphasis globally so hovering NEVER blanks
+  // the line, confidence band, or area fill (ECharts' default emphasis focus
+  // dims/redraws non-hovered series, which read as "disappearing"/flicker).
+  // Applies to every chart (forecast / demand / scenario / performance) since
+  // they all pass through this wrapper. A series can still opt back in by
+  // setting its own `emphasis`.
+  if (o.series) {
+    const disableEmphasis = (s: unknown) => {
+      const sr = { ...(s as Record<string, unknown>) };
+      if (sr.emphasis === undefined) sr.emphasis = { disabled: true };
+      return sr;
+    };
+    o.series = Array.isArray(o.series)
+      ? (o.series as unknown[]).map(disableEmphasis)
+      : disableEmphasis(o.series);
+  }
+
   const isCartesian = !!(o.xAxis || o.yAxis);
   if (!enableToolbar || !isCartesian) return o as EChartsOption;
 
@@ -59,7 +79,7 @@ function withChartControls(
       feature: {
         dataZoom: {
           yAxisIndex: "none",
-          title: { zoom: "Box zoom", back: "Reset zoom" },
+          title: { zoom: "Zoom (drag a region)", back: "Reset zoom" },
         },
         dataView: {
           title: "Data view",
@@ -69,11 +89,11 @@ function withChartControls(
           textColor: "hsl(var(--foreground))",
           buttonColor: "hsl(var(--brand-accent))",
         },
-        restore: { title: "Restore" },
-        saveAsImage: { title: "Save as image", name: "time-lens-chart", pixelRatio: 2 },
+        restore: { title: "Reset" },
+        saveAsImage: { title: "Download", name: "time-lens-chart", pixelRatio: 2 },
         myFullscreen: {
           show: true,
-          title: "Fullscreen",
+          title: "Fit to Screen",
           icon: FULLSCREEN_ICON,
           onclick: () => {
             try {
@@ -88,8 +108,13 @@ function withChartControls(
     };
   }
 
-  // Scroll-wheel zoom + a pan/zoom slider. `moveOnMouseMove:false` keeps hover &
-  // tooltips working (drag does not hijack the cursor).
+  // Phase X.I · Task 4 — mouse-wheel / trackpad-scroll zoom is DISABLED globally
+  // so scrolling the page never accidentally rescales a chart. Zoom is
+  // user-controlled ONLY via the toolbox "Box zoom" button (toolbox.dataZoom),
+  // with "Reset zoom" (toolbox.restore) restoring the original scale. The
+  // `inside` zoom is kept (for panning a box-zoomed view) but with wheel/move
+  // disabled. Tooltip, hover and click are unaffected; wheel events pass to the
+  // page so normal scrolling works.
   const existing = Array.isArray(o.dataZoom)
     ? (o.dataZoom as unknown[])
     : o.dataZoom
@@ -101,16 +126,26 @@ function withChartControls(
   if (!hasInside) {
     o.dataZoom = [
       ...existing,
-      { type: "inside", zoomOnMouseWheel: true, moveOnMouseMove: false, throttle: 50 },
+      {
+        type: "inside",
+        zoomOnMouseWheel: false, // ← no wheel zoom
+        moveOnMouseWheel: false, // ← no wheel pan (page scroll passes through)
+        moveOnMouseMove: false, // keep hover/tooltip working
+        throttle: 50,
+      },
     ];
   }
   return o as EChartsOption;
 }
 
-export function EChartBase({ option, className, height = 320, toolbar = true }: EChartBaseProps) {
+export function EChartBase({ option, className, height = 320, toolbar = true, onReady }: EChartBaseProps) {
   const ref = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
   const { resolvedMode, mounted } = useThemeMode();
+
+  // Keep the latest callback without retriggering the init effect.
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
 
   // Always-current option, so the init effect can apply it without depending on
   // `option` (which would force a costly re-init on every data change).
@@ -126,6 +161,7 @@ export function EChartBase({ option, className, height = 320, toolbar = true }: 
     echarts.registerTheme(ECHARTS_THEME_NAME, buildEchartsTheme());
     const instance = echarts.init(ref.current, ECHARTS_THEME_NAME);
     chartRef.current = instance;
+    onReadyRef.current?.(instance);
 
     // Apply the current option immediately. The instance is created on a later
     // render than the first (mounted flips after mount), by which point the
@@ -142,6 +178,7 @@ export function EChartBase({ option, className, height = 320, toolbar = true }: 
       observer.disconnect();
       instance.dispose();
       chartRef.current = null;
+      onReadyRef.current?.(null);
     };
     // Recreate on theme change to pick up the new registered theme.
   }, [mounted, themeKey, toolbar]);

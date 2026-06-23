@@ -53,6 +53,8 @@ const LIVE_API_PREFIXES = [
   "/segmentation",
   "/reports",
   "/scenarios",
+  // Phase X.U — read-only explainability endpoints are LIVE backend routes.
+  "/explainability",
 ] as const;
 
 function isLiveRoute(url: string): boolean {

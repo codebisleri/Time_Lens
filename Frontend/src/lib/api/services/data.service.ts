@@ -5,6 +5,7 @@ import type {
   Dataset,
   DatasetPreview,
   ForecastSettings,
+  LevelAttributes,
 } from "@/types/dataset";
 
 export const dataService = {
@@ -14,6 +15,11 @@ export const dataService = {
 
   getDataset(id: string): Promise<Dataset> {
     return http.get<Dataset>(endpoints.data.dataset(id));
+  },
+
+  /** Per-forecast-level categorical attributes for the dynamic filters (X.Q · Task 2). */
+  levelAttributes(id: string): Promise<LevelAttributes> {
+    return http.get<LevelAttributes>(endpoints.data.levelAttributes(id));
   },
 
   /** Persist the Data-page configuration; the bridge re-derives schema metadata. */

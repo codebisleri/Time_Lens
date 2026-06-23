@@ -1,112 +1,84 @@
-import { Boxes, GitMerge, Layers, Route, Target } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Check } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { formatNumber } from "@/lib/utils/format";
+import { FEATURE_LABELS, modelName, visibleSegments } from "@/lib/utils/routing-summary";
 import type { SegmentSummary } from "@/types/segmentation";
 
-const FEATURE_LABELS: Record<string, string> = {
-  lag_rolling: "Lag + Rolling",
-  price: "Price",
-  fourier: "Fourier seasonality",
-  holiday: "Holidays",
-  promo: "Promo / Scheme",
-  events: "User events",
-  cross_sku: "Cross-SKU pool",
-};
-
-/** One Segment Model Architecture card — segment, description, recommended
- *  strategy + models, routing rationale, and the feature/CI/reconcile recipe. */
-function ArchitectureCard({ seg }: { seg: SegmentSummary }) {
+/** Compact Segment Model Architecture card (Phase X.K · Tasks 4–6). Clear visual
+ *  hierarchy: the segment name, item count, primary model and secondary/blend are
+ *  the primary focus; the feature list is small and muted (secondary focus).
+ *  Aggregation / CI / Hierarchy metadata is intentionally NOT shown. The item
+ *  count uses the dynamic forecast-level term (e.g. "Items", "Item Nos"). */
+function ArchitectureCard({ seg, levelPlural }: { seg: SegmentSummary; levelPlural: string }) {
   const color = seg.color ?? "#64748b";
   const arch = seg.architecture;
+  const features: string[] = [
+    ...arch.features.map((f) => FEATURE_LABELS[f] ?? f),
+    ...(arch.residualBooster ? [`${arch.residualBooster.toUpperCase()} residual`] : []),
+  ];
+
   return (
-    <Card className="overflow-hidden p-0">
-      <div className="p-4" style={{ borderLeft: `4px solid ${color}` }}>
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">{seg.segment}</h3>
-            <p className="text-xs text-muted-foreground">{formatNumber(seg.skuCount)} SKUs</p>
-          </div>
-          {seg.priority ? <Badge variant="secondary">{seg.priority}</Badge> : null}
-        </div>
-
-        {/* Description */}
-        {seg.strategy ? (
-          <p className="mt-2 text-xs leading-snug text-muted-foreground">{seg.strategy}</p>
-        ) : null}
-
-        {/* Recommended strategy + models */}
-        <dl className="mt-3 space-y-2 text-xs">
-          <div className="flex items-start gap-2">
-            <Target className="mt-0.5 size-3.5 shrink-0" style={{ color }} />
-            <div>
-              <dt className="font-semibold text-foreground">Recommended strategy</dt>
-              <dd className="text-muted-foreground">{arch.primary}</dd>
-            </div>
-          </div>
-          <div className="flex items-start gap-2">
-            <Layers className="mt-0.5 size-3.5 shrink-0" style={{ color }} />
-            <div>
-              <dt className="font-semibold text-foreground">Recommended models</dt>
-              <dd className="text-muted-foreground">
-                {arch.blend.length ? [arch.primary, ...arch.blend].join(" · ") : arch.primary}
-              </dd>
-            </div>
-          </div>
-          <div className="flex items-start gap-2">
-            <Route className="mt-0.5 size-3.5 shrink-0" style={{ color }} />
-            <div>
-              <dt className="font-semibold text-foreground">Routing rationale</dt>
-              <dd className="text-muted-foreground">{arch.tagline ?? seg.forecast ?? "—"}</dd>
-            </div>
-          </div>
-        </dl>
+    <Card className="p-3.5" style={{ borderLeft: `4px solid ${color}` }}>
+      {/* Primary focus — segment name + item count */}
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="truncate text-sm font-semibold text-foreground">{seg.segment}</h3>
+        <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
+          {formatNumber(seg.skuCount)} {levelPlural}
+        </span>
       </div>
 
-      {/* Recipe footer — features, blend method, residual, CI, reconcile */}
-      <div
-        className="space-y-2 border-t px-4 py-2.5"
-        style={{ borderTopColor: `${color}55`, background: `linear-gradient(90deg, ${color}1a 0%, ${color}0a 100%)` }}
-      >
-        <div className="flex flex-wrap gap-1.5">
-          {arch.features.map((f) => (
-            <span key={f} className="rounded bg-background/70 px-1.5 py-0.5 text-[0.65rem] text-foreground">
-              {FEATURE_LABELS[f] ?? f}
+      {/* Primary focus — primary model + secondary / blend (label muted, value
+          emphasised) */}
+      <div className="mt-2.5 space-y-2 text-xs">
+        <div>
+          <p className="text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">
+            Primary Model
+          </p>
+          <p className="mt-0.5 text-sm font-semibold text-foreground">{modelName(arch.primaryKey)}</p>
+        </div>
+        {arch.blend.length ? (
+          <div>
+            <p className="text-[0.7rem] font-medium uppercase tracking-wide text-muted-foreground">
+              Secondary / Blend
+            </p>
+            <p className="mt-0.5 text-xs font-medium text-foreground/90">
+              {arch.blend.map(modelName).join(" · ")}
+            </p>
+          </div>
+        ) : null}
+      </div>
+
+      {/* Secondary focus — features in small, muted, low-emphasis typography */}
+      {features.length ? (
+        <div className="mt-2.5 flex flex-wrap gap-x-2.5 gap-y-0.5 border-t border-border/60 pt-2 text-[0.7rem] text-muted-foreground">
+          {features.map((f) => (
+            <span key={f} className="inline-flex items-center gap-1">
+              <Check className="size-2.5 shrink-0 opacity-70" style={{ color }} />
+              {f}
             </span>
           ))}
-          {arch.residualBooster ? (
-            <span className="rounded bg-background/70 px-1.5 py-0.5 text-[0.65rem] text-foreground">
-              {arch.residualBooster.toUpperCase()} residual
-            </span>
-          ) : null}
         </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.65rem] text-muted-foreground">
-          {arch.blendMethod ? (
-            <span className="inline-flex items-center gap-1">
-              <GitMerge className="size-3" /> {arch.blendMethod.replace(/_/g, " ")}
-            </span>
-          ) : null}
-          {arch.ciSource ? <span>CI: {arch.ciSource.replace(/_/g, " ")}</span> : null}
-          {arch.reconcile ? (
-            <span className="inline-flex items-center gap-1">
-              <Boxes className="size-3" /> {arch.reconcile.replace(/_/g, " ")}
-            </span>
-          ) : null}
-        </div>
-      </div>
+      ) : null}
     </Card>
   );
 }
 
-/** Per-Segment Model Architecture — curated stack per segment (Streamlit's
- *  "🏗 Per-Segment Model Architecture" section). Matrix + lifecycle + triage. */
-export function SegmentArchitecture({ segments }: { segments: SegmentSummary[] }) {
-  // Show populated segments first, then the rest, so the playbook stays visible.
-  const ordered = [...segments].sort((a, b) => b.skuCount - a.skuCount);
+/** Per-Segment Model Architecture — compact card grid. Populated segments first
+ *  so the playbook stays visible; denser grid shows more cards per screen. The
+ *  `levelPlural` term (forecast level, pluralised) labels each card's item count. */
+export function SegmentArchitecture({
+  segments,
+  levelPlural = "Items",
+}: {
+  segments: SegmentSummary[];
+  levelPlural?: string;
+}) {
+  // Task 2 — only segments with items are shown (empty segments hidden).
+  const ordered = visibleSegments(segments);
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
       {ordered.map((s) => (
-        <ArchitectureCard key={s.segment} seg={s} />
+        <ArchitectureCard key={s.segment} seg={s} levelPlural={levelPlural} />
       ))}
     </div>
   );

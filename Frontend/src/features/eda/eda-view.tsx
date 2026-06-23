@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   CalendarRange,
   ChevronDown,
@@ -25,6 +26,7 @@ import { ErrorState } from "@/components/feedback/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { formatDate, formatFrequency, formatIndianCurrency, formatNumber } from "@/lib/utils/format";
+import { isWeekendDate } from "@/lib/utils/holidays";
 import { routes } from "@/lib/constants/routes";
 import { workflowService } from "@/lib/api/services";
 import { WorkflowHero } from "@/features/workflow/workflow-hero";
@@ -33,18 +35,38 @@ import { WorkflowLock } from "@/features/workflow/workflow-lock";
 import { useWorkflowStatus } from "@/features/workflow/use-workflow-status";
 import type { EdaResult } from "@/types/eda";
 import { useEdaStore } from "@/lib/stores/eda-store";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import { useEda, useEdaSkuList } from "./hooks/use-eda";
-import {
-  EdaAcfChart,
-  EdaDecompositionPanel,
-  EdaHistogramChart,
-  EdaHolidayChart,
-  EdaMonthlyBoxChart,
-  EdaPacfChart,
-  EdaSeasonalityChart,
-  EdaTrendChart,
-} from "./eda-charts";
-import { EdaAnomalyEditor } from "./eda-anomaly-editor";
+
+// Phase X.Q · Task 8 — EDA opening performance. The heavy ECharts-backed panels
+// are lazy-loaded (next/dynamic, ssr:false) so navigating to EDA renders the
+// shell + data-quality tiles INSTANTLY; the echarts bundle is code-split out of
+// the route's initial JS and each chart streams in (with a skeleton) only when
+// it actually renders — i.e. after the user clicks "Run EDA". No blocking nav,
+// no long spinner.
+const ChartFallback = () => <Skeleton className="h-64 w-full rounded-md" />;
+// NOTE: Next's next/dynamic SWC transform requires the options (esp. `ssr:false`)
+// to be an INLINE object literal in each call — do not hoist it to a variable.
+const EdaAcfChart = dynamic(() => import("./eda-charts").then((m) => m.EdaAcfChart), { ssr: false, loading: ChartFallback });
+const EdaDecompositionPanel = dynamic(() => import("./eda-charts").then((m) => m.EdaDecompositionPanel), { ssr: false, loading: ChartFallback });
+const EdaHistogramChart = dynamic(() => import("./eda-charts").then((m) => m.EdaHistogramChart), { ssr: false, loading: ChartFallback });
+const EdaHolidayChart = dynamic(() => import("./eda-charts").then((m) => m.EdaHolidayChart), { ssr: false, loading: ChartFallback });
+const EdaMonthlyBoxChart = dynamic(() => import("./eda-charts").then((m) => m.EdaMonthlyBoxChart), { ssr: false, loading: ChartFallback });
+const EdaPacfChart = dynamic(() => import("./eda-charts").then((m) => m.EdaPacfChart), { ssr: false, loading: ChartFallback });
+const EdaSeasonalityChart = dynamic(() => import("./eda-charts").then((m) => m.EdaSeasonalityChart), { ssr: false, loading: ChartFallback });
+const EdaTrendChart = dynamic(() => import("./eda-charts").then((m) => m.EdaTrendChart), { ssr: false, loading: ChartFallback });
+const EdaAcfInsights = dynamic(() => import("./eda-acf-insights").then((m) => m.EdaAcfInsights), {
+  ssr: false,
+  loading: () => <Skeleton className="h-24 w-full rounded-md" />,
+});
+const EdaAnomalyEditor = dynamic(() => import("./eda-anomaly-editor").then((m) => m.EdaAnomalyEditor), {
+  ssr: false,
+  loading: () => <Skeleton className="h-64 w-full rounded-md" />,
+});
+const EdaCorrelationHeatmap = dynamic(() => import("./eda-correlation-heatmap").then((m) => m.EdaCorrelationHeatmap), {
+  ssr: false,
+  loading: () => <Skeleton className="h-48 w-full rounded-md" />,
+});
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return <h2 className="text-base font-semibold tracking-tight text-foreground">{children}</h2>;
@@ -138,14 +160,15 @@ export function EdaView() {
 
   // Display the *configured* frequency (D/W/MS/QS/YS → label), not the
   // auto-detected raw granularity, so Weekly EDA reads as "Weekly".
+  const { label: levelLabel, plural: levelPlural } = useForecastLevel();
   const freqLabel = displayData ? formatFrequency(displayData.dataQuality.frequency) : "";
   const portfolioSkus = displayData?.dataQuality.skuCount ?? skus.length;
   const scopeLabel =
     scope === "sku"
       ? selectedSku
-        ? `SKU = ${selectedSku}`
-        : "a single SKU"
-      : `Portfolio aggregate (${formatNumber(portfolioSkus)} SKUs)`;
+        ? `${levelLabel} = ${selectedSku}`
+        : `a single ${levelLabel.toLowerCase()}`
+      : `Portfolio aggregate (${formatNumber(portfolioSkus)} ${levelPlural})`;
 
   const runEda = useCallback(async () => {
     setRan(true);
@@ -172,7 +195,7 @@ export function EdaView() {
       <WorkflowHero
         step="Step 2 · EDA"
         title="Exploratory Time-Series Analysis"
-        subtitle="Trend, seasonality, decomposition, anomalies, autocorrelation — portfolio or per-SKU"
+        subtitle={`Trend, seasonality, decomposition, anomalies, autocorrelation — portfolio or per-${levelLabel.toLowerCase()}`}
         icon={LineChart}
         variant="curve"
       />
@@ -192,14 +215,14 @@ export function EdaView() {
               <div>
                 <p className="text-sm font-medium text-foreground">Analysis scope</p>
                 <p className="text-xs text-muted-foreground">
-                  Portfolio = sum across all SKUs. Single SKU = deep-dive on one product.
+                  Portfolio = sum across all {levelPlural.toLowerCase()}. Single {levelLabel.toLowerCase()} = deep-dive on one.
                 </p>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <div className="inline-flex rounded-md border border-border p-0.5">
                   {([
                     ["portfolio", "Portfolio aggregate"],
-                    ["sku", "Single SKU (drill-down)"],
+                    ["sku", `Single ${levelLabel} (drill-down)`],
                   ] as const).map(([m, lbl]) => (
                     <button
                       key={m}
@@ -221,7 +244,7 @@ export function EdaView() {
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" className="justify-between gap-2 sm:w-56">
                         <span className="truncate font-mono text-xs">
-                          {selectedSku ?? "Pick a SKU (top by volume)…"}
+                          {selectedSku ?? `Pick a ${levelLabel} (top by volume)…`}
                         </span>
                         <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
                       </Button>
@@ -395,7 +418,20 @@ function EdaSections({ eda }: { eda: EdaResult }) {
             {eda.peakMonth ? (
               <p className="mb-2 text-sm text-muted-foreground">Peak month: {eda.peakMonth}.</p>
             ) : null}
-            <EdaSeasonalityChart data={eda.seasonality} />
+            <EdaSeasonalityChart series={eda.series} />
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Exogenous Correlation Heatmap (Phase X.T · Task 4) */}
+      <section className="space-y-3">
+        <SectionHeading>Exogenous Correlation</SectionHeading>
+        <Card>
+          <CardContent className="space-y-2 pt-6">
+            <p className="text-sm text-muted-foreground">
+              Pearson correlation of demand against each numeric exogenous driver.
+            </p>
+            <EdaCorrelationHeatmap datasetId={eda.datasetId} />
           </CardContent>
         </Card>
       </section>
@@ -432,6 +468,14 @@ function EdaSections({ eda }: { eda: EdaResult }) {
       {/* ACF & PACF */}
       <section id="correlation" className="scroll-mt-24 space-y-3">
         <SectionHeading>ACF &amp; PACF</SectionHeading>
+        {/* Task 1 — readable result cards derived from the backend ACF/PACF. */}
+        {eda.autocorrelation.length ? (
+          <EdaAcfInsights
+            acf={eda.autocorrelation}
+            pacf={eda.partialAutocorrelation}
+            nPeriods={eda.dataQuality.nPeriods}
+          />
+        ) : null}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card>
             <CardContent className="pt-6">
@@ -489,7 +533,12 @@ function EdaSections({ eda }: { eda: EdaResult }) {
                 </div>
                 <EdaHolidayChart series={eda.series} holiday={holiday} />
                 <p className="mt-2 text-xs text-muted-foreground">
-                  {formatNumber(holiday.holidayCount)} holiday period(s) highlighted ({holiday.country ?? "IN"} calendar).
+                  {formatNumber(
+                    holiday.markers?.length
+                      ? holiday.markers.filter((m) => !isWeekendDate(m.date)).length
+                      : holiday.holidayCount,
+                  )}{" "}
+                  holiday period(s) highlighted ({holiday.country ?? "IN"} calendar).
                 </p>
               </>
             ) : (

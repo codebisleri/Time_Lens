@@ -11,6 +11,7 @@ import { useAsync } from "@/lib/hooks";
 import { reportsService } from "@/lib/api/services";
 import { routes } from "@/lib/constants/routes";
 import { formatNumber } from "@/lib/utils/format";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import { WorkflowHero } from "@/features/workflow/workflow-hero";
 import { WorkflowLock } from "@/features/workflow/workflow-lock";
 import { useWorkflowStatus } from "@/features/workflow/use-workflow-status";
@@ -29,6 +30,7 @@ import {
 export function DashboardView() {
   const router = useRouter();
   const workflow = useWorkflowStatus();
+  const { plural: levelPlural } = useForecastLevel();
   const hasDataset = !!workflow.data?.datasetUploaded;
   const noDataset =
     !workflow.isLoading && workflow.data && !workflow.data.datasetUploaded;
@@ -83,8 +85,8 @@ export function DashboardView() {
         metrics={
           s
             ? [
-                { label: "Portfolio SKUs", value: formatNumber(s.dataset.skuCount ?? 0) },
-                { label: "SKUs forecast", value: formatNumber(s.forecast.skusForecasted) },
+                { label: `Portfolio ${levelPlural}`, value: formatNumber(s.dataset.skuCount ?? 0) },
+                { label: `${levelPlural} forecast`, value: formatNumber(s.forecast.skusForecasted) },
                 {
                   label: "Median WMAPE",
                   value:

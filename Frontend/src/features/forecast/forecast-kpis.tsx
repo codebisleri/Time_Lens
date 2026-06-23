@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { formatDelta, formatNumber, formatPercent } from "@/lib/utils/format";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type { ForecastResultRow } from "./derive";
 
 const GRID = "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4";
@@ -99,6 +100,7 @@ function aggregate(rows: ForecastResultRow[]) {
 }
 
 export function ForecastKpiSection({ rows }: { rows: ForecastResultRow[] }) {
+  const { plural: levelPlural } = useForecastLevel();
   const { total, avgAccuracy, mape, wape, healthy, horizon } = aggregate(rows);
   const horizonLabel = horizon.charAt(0).toUpperCase() + horizon.slice(1);
 
@@ -109,7 +111,7 @@ export function ForecastKpiSection({ rows }: { rows: ForecastResultRow[] }) {
         label="Forecast Accuracy"
         value={formatPercent(avgAccuracy)}
         delta={avgAccuracy - 0.85}
-        meta={`${formatNumber(healthy)} of ${formatNumber(total)} SKUs healthy`}
+        meta={`${formatNumber(healthy)} of ${formatNumber(total)} ${levelPlural} healthy`}
       />
       <ForecastKpiCard
         icon={Percent}

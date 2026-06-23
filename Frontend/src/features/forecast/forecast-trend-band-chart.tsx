@@ -4,7 +4,6 @@ import { useMemo } from "react";
 import type { EChartsOption } from "echarts";
 import { EChartBase } from "@/components/charts/echart-base";
 import { useThemeMode } from "@/lib/theme/use-theme-mode";
-import { readCssVar } from "@/lib/theme/theme-config";
 import { formatCompact, formatDate, formatNumber } from "@/lib/utils/format";
 import type { ForecastBandPoint } from "./hooks/use-forecast-trend";
 
@@ -32,11 +31,11 @@ export function ForecastTrendBandChart({
 
   const option = useMemo<EChartsOption>(() => {
     void resolvedMode;
-    // F.16 — navy/orange/neutral only.
-    const actualColor = readCssVar("--chart-1") || "#d6dee8"; // neutral — actual
-    const forecastColor = readCssVar("--chart-5") || "#EF7602"; // orange — forecast
-    const fitColor = readCssVar("--chart-7") || "#8d99a6"; // grey — in-sample fit
-    const testColor = readCssVar("--chart-8") || "#b4560a"; // deep orange — test pred
+    // Phase X.C · Task 3 — region color coding: historical = blue, test
+    // prediction = orange, future forecast = green (with matching shaded areas).
+    const actualColor = "#2563eb"; // blue — historical
+    const forecastColor = "#10b981"; // green — future forecast
+    const testColor = "#EF7602"; // orange — test prediction
 
     const rows = Array.isArray(data) ? data : [];
     const labels = rows.map((d) =>
@@ -60,19 +59,18 @@ export function ForecastTrendBandChart({
     //    null segment (that was the dashboard's separate crash mode).
     const actualLine: (number | null)[] = new Array(n).fill(null);
     const forecastLine: (number | null)[] = new Array(n).fill(null);
-    const fitLine: (number | null)[] = new Array(n).fill(null); // in-sample fit
+    // Phase X.ZZ.2 · Task 6 — the "In-sample fit" series is temporarily removed
+    // from the visualization (no backend change; d.fit is simply not plotted).
     const testLine: (number | null)[] = new Array(n).fill(null); // hold-out test pred
     const demandArea: number[] = new Array(n).fill(0); // continuous fill, no null
     const bandLower: number[] = new Array(n).fill(0);
     const bandSpan: number[] = new Array(n).fill(0);
-    let hasFit = false;
     let hasTest = false;
 
     let lastActualIdx = -1;
     rows.forEach((d, i) => {
       const a = Number.isFinite(d.actual) ? (d.actual as number) : null;
       const f = Number.isFinite(d.forecast) ? (d.forecast as number) : null;
-      const ft = Number.isFinite(d.fit) ? (d.fit as number) : null;
       const tp = Number.isFinite(d.testPred) ? (d.testPred as number) : null;
 
       if (a != null) {
@@ -80,7 +78,6 @@ export function ForecastTrendBandChart({
         lastActualIdx = i;
       }
       if (f != null) forecastLine[i] = f;
-      if (ft != null) { fitLine[i] = ft; hasFit = true; }
       if (tp != null) { testLine[i] = tp; hasTest = true; }
       demandArea[i] = a ?? f ?? 0;
 
@@ -110,6 +107,37 @@ export function ForecastTrendBandChart({
     const hasSplit = lastActualIdx >= 0 && lastActualIdx + 1 < n;
     const boundaryLabel = hasSplit ? labels[lastActualIdx] : null;
     const horizonEndLabel = hasSplit ? labels[n - 1] : null;
+
+    // Task 3 — test-prediction window (first→last non-null test point) for the
+    // orange shaded region.
+    let testStartIdx = -1;
+    let testEndIdx = -1;
+    testLine.forEach((v, i) => {
+      if (v != null) {
+        if (testStartIdx < 0) testStartIdx = i;
+        testEndIdx = i;
+      }
+    });
+    const testStartLabel = testStartIdx >= 0 ? labels[testStartIdx] : null;
+    const testEndLabel = testEndIdx >= 0 ? labels[testEndIdx] : null;
+
+    // Task 3 — shaded regions (each a [start, end] pair with its own color):
+    // future forecast = green, test-prediction window = orange. Typed as 2-tuples
+    // so it satisfies ECharts' MarkArea2DDataItemOption.
+    type AreaPair = [{ xAxis: string; itemStyle?: { color: string; opacity: number } }, { xAxis: string }];
+    const markAreas: AreaPair[] = [];
+    if (boundaryLabel && horizonEndLabel) {
+      markAreas.push([
+        { xAxis: boundaryLabel, itemStyle: { color: forecastColor, opacity: 0.07 } },
+        { xAxis: horizonEndLabel },
+      ]);
+    }
+    if (testStartLabel && testEndLabel) {
+      markAreas.push([
+        { xAxis: testStartLabel, itemStyle: { color: testColor, opacity: 0.1 } },
+        { xAxis: testEndLabel },
+      ]);
+    }
 
     // Nothing to plot yet — return an empty (but valid) option rather than feed
     // the animator degenerate series.
@@ -153,7 +181,7 @@ export function ForecastTrendBandChart({
       legend: {
         data: [
           "Actual",
-          ...(hasFit ? ["In-sample fit"] : []),
+          // Task 6 — "In-sample fit" removed from the legend.
           ...(hasTest ? ["Test prediction"] : []),
           "Forecast",
         ],
@@ -235,26 +263,18 @@ export function ForecastTrendBandChart({
           itemStyle: { color: actualColor },
           z: 3,
         },
-        // In-sample fit (rolling-origin train prediction) over the history.
-        ...(hasFit
-          ? [{
-              name: "In-sample fit",
-              type: "line" as const,
-              smooth: true,
-              showSymbol: false,
-              connectNulls: false,
-              data: fitLine,
-              lineStyle: { width: 1.5, type: "dotted" as const, color: fitColor },
-              itemStyle: { color: fitColor },
-              z: 3,
-            }]
-          : []),
+        // Task 6 — "In-sample fit" series intentionally removed from the chart
+        // (visualization only; the backend still computes d.fit).
         // Hold-out / validation test prediction over the backtest window.
         ...(hasTest
           ? [{
               name: "Test prediction",
               type: "line" as const,
-              smooth: false,
+              // Phase X.X · Task 1 — render as a smooth curve (was angular). The
+              // underlying values, tooltip, and Test WMAPE are unchanged; only the
+              // line interpolation is visual. monotone keeps it from overshooting.
+              smooth: true,
+              smoothMonotone: "x" as const,
               showSymbol: true,
               symbolSize: 5,
               connectNulls: false,
@@ -285,14 +305,7 @@ export function ForecastTrendBandChart({
                 data: [{ xAxis: boundaryLabel }],
               }
             : undefined,
-          markArea:
-            boundaryLabel && horizonEndLabel
-              ? {
-                  silent: true,
-                  itemStyle: { color: forecastColor, opacity: 0.06 },
-                  data: [[{ xAxis: boundaryLabel }, { xAxis: horizonEndLabel }]],
-                }
-              : undefined,
+          markArea: markAreas.length ? { silent: true, data: markAreas } : undefined,
         },
       ],
     };

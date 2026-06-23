@@ -13,6 +13,7 @@ import { WorkflowLock } from "@/features/workflow/workflow-lock";
 import { useWorkflowStatus } from "@/features/workflow/use-workflow-status";
 import { routes } from "@/lib/constants/routes";
 import { formatPercent } from "@/lib/utils/format";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import { FORECAST_HEALTH_LABELS, type ForecastResultRow } from "./derive";
 import { useForecastResults } from "./hooks/use-forecast-results";
 import { useForecastTrend } from "./hooks/use-forecast-trend";
@@ -83,6 +84,7 @@ export function ForecastResultsView() {
   const workflow = useWorkflowStatus();
   const results = useForecastResults();
   const trend = useForecastTrend();
+  const { plural: levelPlural } = useForecastLevel();
 
   const [filters, setFilters] = useState<ForecastFilters>(
     DEFAULT_FORECAST_FILTERS,
@@ -255,7 +257,7 @@ export function ForecastResultsView() {
         <EmptyState
           icon={Activity}
           title="No forecasts yet"
-          description="Run the forecasting engine on your SKUs to populate results here."
+          description={`Run the forecasting engine on your ${levelPlural} to populate results here.`}
         />
       ) : (
         <Card>

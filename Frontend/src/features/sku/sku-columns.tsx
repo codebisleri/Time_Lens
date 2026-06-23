@@ -6,12 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatDate, formatPercent } from "@/lib/utils/format";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type { SkuRow } from "./derive";
 import { SKU_STATUS_VARIANT } from "./derive";
 
 /** Friendly label per column id, used by the column-visibility menu. */
 export const SKU_COLUMN_LABELS: Record<string, string> = {
-  code: "SKU Code",
+  code: "Code",
   name: "Product Name",
   category: "Category",
   unitPrice: "Price",
@@ -55,6 +56,12 @@ function SortableHeader({
   );
 }
 
+/** Code-column header that prefixes the dynamic forecast-level label. */
+function CodeHeader({ column }: { column: Column<SkuRow, unknown> }) {
+  const { label: levelLabel } = useForecastLevel();
+  return <SortableHeader column={column} label={`${levelLabel} Code`} />;
+}
+
 /**
  * Column definitions for the SKU catalog table. Authored per-feature and passed
  * into TanStack Table. The leading `select` column and per-column `meta.label`
@@ -91,9 +98,7 @@ export const skuColumns: ColumnDef<SkuRow>[] = [
   },
   {
     accessorKey: "code",
-    header: ({ column }) => (
-      <SortableHeader column={column} label={SKU_COLUMN_LABELS.code!} />
-    ),
+    header: ({ column }) => <CodeHeader column={column} />,
     cell: ({ row }) => (
       <span className="font-mono text-xs font-medium text-foreground">
         {row.original.code}

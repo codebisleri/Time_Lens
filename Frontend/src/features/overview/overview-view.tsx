@@ -19,17 +19,98 @@ import { PageShell } from "@/components/layout/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CollapsiblePanel } from "@/components/ui/collapsible-panel";
 import { WorkflowHero } from "@/features/workflow/workflow-hero";
 import { routes } from "@/lib/constants/routes";
 import { env } from "@/lib/constants/env";
 
-const STEPS: { n: number; label: string; href: string; icon: LucideIcon; desc: string }[] = [
-  { n: 1, label: "Input Data & Configuration", href: routes.data, icon: Database, desc: "Upload sales history, map columns, set the forecasting level, frequency, and horizon." },
-  { n: 2, label: "EDA", href: routes.eda, icon: LineChart, desc: "Explore demand: distribution, trend, seasonality, decomposition, and correlation." },
-  { n: 3, label: "Profile & Route", href: routes.profile, icon: Layers, desc: "Classify demand patterns and auto-route every item to its best-fit model family." },
-  { n: 4, label: "Forecast", href: routes.forecast, icon: TrendingUp, desc: "Run the model competition, pick champions, and review accuracy diagnostics." },
-  { n: 5, label: "Scenario Planning", href: routes.scenarios, icon: SlidersHorizontal, desc: "Model what-if price, promo, and supply changes against the baseline plan." },
-  { n: 6, label: "Reports", href: routes.report, icon: FileBarChart, desc: "Generate executive demand plans and accuracy reports for sign-off." },
+// Informational, non-navigating guidance for each workflow stage. These cards
+// explain what happens at each step — they are NOT links and carry no routes or
+// click handlers (the sidebar drives navigation).
+const STEPS: { n: number; label: string; icon: LucideIcon; desc: string; bullets: string[] }[] = [
+  {
+    n: 1,
+    label: "Input Data & Configuration",
+    icon: Database,
+    desc: "Bring in your historical sales and define how forecasts are structured.",
+    bullets: [
+      "Upload historical sales data.",
+      "Map the item, date, quantity, brand, and category columns.",
+      "Configure the forecasting hierarchy.",
+      "Define the forecast horizon.",
+      "Select the time frequency.",
+      "Validate datasets before processing.",
+    ],
+  },
+  {
+    n: 2,
+    label: "EDA",
+    icon: LineChart,
+    desc: "Understand demand behaviour before modelling with exploratory analysis.",
+    bullets: [
+      "Analyze demand distributions.",
+      "Identify trends and seasonality.",
+      "Detect missing values.",
+      "Detect outliers.",
+      "Study correlations.",
+      "Visualize historical demand patterns.",
+    ],
+  },
+  {
+    n: 3,
+    label: "Profile & Route",
+    icon: Layers,
+    desc: "Classify each item's demand pattern and route it to the right model family.",
+    bullets: [
+      "Calculate ADI and CV².",
+      "Classify demand patterns.",
+      "Identify Smooth items.",
+      "Identify Erratic items.",
+      "Identify Intermittent items.",
+      "Identify Lumpy items.",
+      "Route each item to its best-fit forecasting model.",
+    ],
+  },
+  {
+    n: 4,
+    label: "Forecast",
+    icon: TrendingUp,
+    desc: "Run the model competition and generate reviewable demand forecasts.",
+    bullets: [
+      "Run multiple forecasting models.",
+      "Compare model accuracy.",
+      "Select champion models.",
+      "Generate future demand forecasts.",
+      "Review confidence intervals.",
+      "Analyze diagnostics.",
+    ],
+  },
+  {
+    n: 5,
+    label: "Scenario Planning",
+    icon: SlidersHorizontal,
+    desc: "Explore what-if plans and measure their impact against the baseline.",
+    bullets: [
+      "Create what-if scenarios.",
+      "Simulate pricing changes.",
+      "Evaluate promotion impacts.",
+      "Analyze supply constraints.",
+      "Compare scenarios against baseline forecasts.",
+    ],
+  },
+  {
+    n: 6,
+    label: "Reports",
+    icon: FileBarChart,
+    desc: "Produce executive demand plans and accuracy reports for sign-off.",
+    bullets: [
+      "Generate executive reports.",
+      "Review forecast accuracy.",
+      "Export forecast plans.",
+      "Download reports.",
+      "Share planning outputs.",
+    ],
+  },
 ];
 
 interface Term {
@@ -57,26 +138,40 @@ const GLOSSARY: Term[] = [
   { term: "Cold-Start", definition: "An item with too little history to fit a standard model; routed to a foundation/zero-shot approach." },
 ];
 
+// Informational accordion (Phase X.K · Task 1) — collapsed by default; the header
+// shows the step number, icon and label, and expanding reveals the description and
+// guidance bullets. No link, no navigation arrow (the sidebar drives navigation);
+// each panel is independent so several steps can stay open at once.
 function StepCard({ step }: { step: (typeof STEPS)[number] }) {
-  return (
-    <Link
-      href={step.href}
-      className="group flex gap-4 rounded-xl border border-border bg-card p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-brand/40 hover:shadow-[var(--shadow-md)]"
-    >
+  const header = (
+    <>
       <span className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-border bg-primary/10 text-primary">
         <step.icon className="size-5" />
       </span>
-      <div className="min-w-0 space-y-0.5">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-brand-accent">
-            Step {step.n}
-          </span>
-        </div>
+      <div className="min-w-0">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-brand-accent">
+          Step {step.n}
+        </span>
         <p className="text-sm font-semibold text-foreground">{step.label}</p>
-        <p className="text-xs leading-relaxed text-muted-foreground">{step.desc}</p>
       </div>
-      <ArrowRight className="ml-auto size-4 shrink-0 self-center text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-    </Link>
+    </>
+  );
+
+  return (
+    <CollapsiblePanel header={header}>
+      <p className="text-xs leading-relaxed text-muted-foreground">{step.desc}</p>
+      <ul className="space-y-1 pt-2">
+        {step.bullets.map((b) => (
+          <li key={b} className="flex gap-2 text-xs leading-relaxed text-muted-foreground">
+            <span
+              className="mt-[6px] size-1 shrink-0 rounded-full bg-brand-accent"
+              aria-hidden
+            />
+            <span>{b}</span>
+          </li>
+        ))}
+      </ul>
+    </CollapsiblePanel>
   );
 }
 
@@ -137,10 +232,16 @@ export function OverviewView() {
         </CardContent>
       </Card>
 
-      {/* Forecasting workflow */}
+      {/* Forecasting workflow — informational guidance (cards do not navigate;
+          use the sidebar to move between modules). */}
       <section className="space-y-3">
-        <h2 className="text-base font-semibold tracking-tight text-foreground">Forecasting Workflow</h2>
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <div className="space-y-1">
+          <h2 className="text-base font-semibold tracking-tight text-foreground">Forecasting Workflow</h2>
+          <p className="text-sm text-muted-foreground">
+            A guide to what each stage does — work through them in order using the sidebar.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2">
           {STEPS.map((s) => (
             <StepCard key={s.n} step={s} />
           ))}

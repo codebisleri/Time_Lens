@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown as ChevDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { formatForecastLevel } from "@/lib/utils/format";
@@ -30,6 +31,10 @@ export function Field({
 export interface Opt {
   value: string;
   label: string;
+  /** Greyed-out + unselectable (Phase X.Q · Task 6). */
+  disabled?: boolean;
+  /** Native tooltip shown on hover (e.g. why an option is disabled). */
+  title?: string;
 }
 
 /** Native select styled to match the Input primitive (no new UI dependency). */
@@ -58,7 +63,7 @@ export function Select({
       )}
     >
       {options.map((o) => (
-        <option key={o.value} value={o.value}>
+        <option key={o.value} value={o.value} disabled={o.disabled} title={o.title}>
           {o.label}
         </option>
       ))}
@@ -110,6 +115,66 @@ export function NumberInput({
         onChange(clamp(Number.isFinite(n) ? n : (min ?? 0)));
       }}
     />
+  );
+}
+
+/**
+ * Stepper (Phase X.Q · Task 4) — ▲/▼ buttons around a read-only value. The value
+ * can ONLY change via the buttons (no manual typing ⇒ no invalid input), and is
+ * always clamped to [min, max]. Buttons disable at the limits, with tooltips.
+ */
+export function Stepper({
+  value,
+  onChange,
+  min = 0,
+  max = Number.POSITIVE_INFINITY,
+  step = 1,
+  unit,
+  ariaLabel,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
+  ariaLabel?: string;
+}) {
+  const atMin = value <= min;
+  const atMax = value >= max;
+  const dec = () => onChange(Math.max(min, value - step));
+  const inc = () => onChange(Math.min(max, value + step));
+  return (
+    <div
+      className="inline-flex h-9 items-stretch overflow-hidden rounded-md border border-input bg-background"
+      role="group"
+      aria-label={ariaLabel}
+    >
+      <button
+        type="button"
+        onClick={dec}
+        disabled={atMin}
+        aria-label={`Decrease ${ariaLabel ?? "value"}`}
+        title={atMin ? `Minimum is ${min}` : "Decrease"}
+        className="flex w-9 items-center justify-center text-muted-foreground transition-colors hover:bg-secondary disabled:opacity-40 disabled:hover:bg-transparent"
+      >
+        <ChevDown className="size-4" />
+      </button>
+      <span className="flex min-w-[3.5rem] flex-1 items-center justify-center border-x border-input px-2 text-sm tabular-nums text-foreground" aria-live="polite">
+        {value}
+        {unit ? <span className="ml-1 text-xs text-muted-foreground">{unit}</span> : null}
+      </span>
+      <button
+        type="button"
+        onClick={inc}
+        disabled={atMax}
+        aria-label={`Increase ${ariaLabel ?? "value"}`}
+        title={atMax ? `Maximum is ${max}` : "Increase"}
+        className="flex w-9 items-center justify-center text-muted-foreground transition-colors hover:bg-secondary disabled:opacity-40 disabled:hover:bg-transparent"
+      >
+        <ChevronUp className="size-4" />
+      </button>
+    </div>
   );
 }
 

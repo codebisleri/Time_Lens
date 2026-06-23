@@ -15,6 +15,7 @@ import { readCssVar } from "@/lib/theme/theme-config";
 import { downloadFile } from "@/lib/utils/download";
 import { formatCompact, formatDate, formatNumber } from "@/lib/utils/format";
 import { forecastService } from "@/lib/api/services";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type { BrandReconciliation } from "@/types/forecast";
 
 const num = (v: number | null) =>
@@ -160,6 +161,7 @@ export function ReconciliationSection({
   datasetId?: string;
   runId?: string | null;
 }) {
+  const { label: levelLabel } = useForecastLevel();
   const recon = useAsync(
     () => forecastService.reconciliation({ datasetId, runId: runId ?? undefined }),
     [datasetId, runId],
@@ -183,7 +185,7 @@ export function ReconciliationSection({
       <CardContent className="space-y-4 pt-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
-            Bottom-up (sum of SKU forecasts) vs top-down (brand-level) vs the reconciled blend.
+            Bottom-up (sum of {levelLabel} forecasts) vs top-down (brand-level) vs the reconciled blend.
           </p>
           <div className="sm:w-56">
             <Select

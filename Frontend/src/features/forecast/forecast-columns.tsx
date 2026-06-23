@@ -8,10 +8,12 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { formatNumber, formatPercent } from "@/lib/utils/format";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import {
   FORECAST_HEALTH_LABELS,
   FORECAST_HEALTH_VARIANT,
@@ -32,13 +34,19 @@ export const FORECAST_COLUMN_LABELS: Record<string, string> = {
 /** Columns that always stay visible / can't be hidden. */
 export const FORECAST_LOCKED_COLUMNS = ["select", "skuCode"];
 
+/** Live forecast-level label (e.g. "Material") for the leading column header. */
+function LevelHeaderLabel() {
+  const { label } = useForecastLevel();
+  return <>{label}</>;
+}
+
 function SortableHeader({
   column,
   label,
   align = "left",
 }: {
   column: Column<ForecastResultRow, unknown>;
-  label: string;
+  label: ReactNode;
   align?: "left" | "right";
 }) {
   const sorted = column.getIsSorted();
@@ -149,7 +157,7 @@ export const forecastColumns: ColumnDef<ForecastResultRow>[] = [
   {
     accessorKey: "skuCode",
     header: ({ column }) => (
-      <SortableHeader column={column} label={FORECAST_COLUMN_LABELS.skuCode!} />
+      <SortableHeader column={column} label={<LevelHeaderLabel />} />
     ),
     cell: ({ row }) => (
       <div className="flex flex-col">

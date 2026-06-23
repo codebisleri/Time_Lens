@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EChartsOption } from "echarts";
-import { Loader2, Play, Plus, Save, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { Download, Loader2, Play, Save, SlidersHorizontal, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { PageShell } from "@/components/layout/page-shell";
 import { Button } from "@/components/ui/button";
@@ -16,13 +16,19 @@ import { readCssVar } from "@/lib/theme/theme-config";
 import { useAsync } from "@/lib/hooks";
 import { forecastService, skuService, whatifService } from "@/lib/api/services";
 import { formatDate, formatNumber } from "@/lib/utils/format";
+import { downloadFile } from "@/lib/utils/download";
 import { routes } from "@/lib/constants/routes";
 import { WorkflowHero } from "@/features/workflow/workflow-hero";
 import { WorkflowLock } from "@/features/workflow/workflow-lock";
 import { useWorkflowStatus } from "@/features/workflow/use-workflow-status";
-import { Field, NumberInput, Select } from "@/features/data/controls";
+import { Field, Select } from "@/features/data/controls";
+import { NumericInput } from "@/components/ui/numeric-input";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
+import { useScenarioPlanningStore } from "@/lib/stores/scenario-planning-store";
+import { ScenarioCausalView } from "./scenario-causal-view";
 import type { ForecastJob } from "@/types/forecast";
 import type {
+  CausalRunResult,
   ScenarioAdjustment,
   ScenarioRunResult,
   WhatIfChangeType,
@@ -107,9 +113,11 @@ export function ScenarioPlanningView() {
     () => (skuQuery.data?.items ?? []).map((s) => s.code),
     [skuQuery.data],
   );
-  const [sku, setSku] = useState("");
-  const [periods, setPeriods] = useState(12);
-  const [adjustments, setAdjustments] = useState<ScenarioAdjustment[]>([]);
+  const { label: levelLabel } = useForecastLevel();
+  // Persisted planning state (Task 6 — survives refresh / restart / Electron).
+  const { mode, setMode, sku, setSku, periods, setPeriods, adjustments, setAdjustments,
+    applyCausal, setApplyCausal, start, end, setWindow } = useScenarioPlanningStore();
+  const [horizonValid, setHorizonValid] = useState(true);
   const [features, setFeatures] = useState<string[]>([]);
   const [phase, setPhase] = useState<"idle" | "running" | "error">("idle");
   const [progress, setProgress] = useState(0);
@@ -129,28 +137,48 @@ export function ScenarioPlanningView() {
 
   const activeSku = sku || skus[0] || "";
 
+  const pollJob = useCallback(async (start: ForecastJob): Promise<ForecastJob> => {
+    let job = start;
+    let waited = 0;
+    setJobMessage(job.message ?? "");
+    while (job.status !== "completed" && job.status !== "failed") {
+      await wait(POLL_MS);
+      if (cancelled.current) return job;
+      waited += POLL_MS;
+      if (waited > MAX_WAIT_MS) break;
+      try { job = await forecastService.getJob(job.id); } catch { /* transient */ }
+      setProgress(job.progress ?? 0);
+      setJobMessage(job.message ?? "");
+    }
+    return job;
+  }, []);
+
   const run = useCallback(async () => {
     if (!activeSku) return;
     setPhase("running");
     setProgress(0);
     setError(null);
     try {
-      let job: ForecastJob = await whatifService.run({
-        skuId: activeSku,
-        periods,
-        adjustments,
-      });
-      setJobMessage(job.message ?? "");
-      let waited = 0;
-      while (job.status !== "completed" && job.status !== "failed") {
-        await wait(POLL_MS);
+      // "Apply causal estimate" path (parity with render_whatif_tab): estimate
+      // the lever's DoWhy ATE first, then apply it to the baseline. Only when a
+      // single adjustment is set (matches the source's single-rule requirement).
+      let causalAte: number | undefined;
+      if (applyCausal && adjustments.length === 1) {
+        setJobMessage("Estimating causal effect…");
+        const cjob = await pollJob(
+          await whatifService.causalRun({ skuId: activeSku, treatments: [adjustments[0]!.feature] }),
+        );
         if (cancelled.current) return;
-        waited += POLL_MS;
-        if (waited > MAX_WAIT_MS) break;
-        try { job = await forecastService.getJob(job.id); } catch { /* transient */ }
-        setProgress(job.progress ?? 0);
-        setJobMessage(job.message ?? "");
+        const cres = cjob.result as CausalRunResult | null;
+        const ate = cres?.estimates?.[0]?.["Causal Estimate"];
+        if (ate != null && Number.isFinite(ate)) causalAte = ate;
       }
+      const job = await pollJob(
+        await whatifService.run({
+          skuId: activeSku, periods, adjustments, causalAte,
+          start: start || undefined, end: end || undefined,
+        }),
+      );
       if (cancelled.current) return;
       if (job.status === "failed") {
         setError(job.error ?? "Scenario run failed.");
@@ -168,17 +196,48 @@ export function ScenarioPlanningView() {
       setError((err as { message?: string })?.message ?? "Scenario run failed.");
       setPhase("error");
     }
-  }, [activeSku, periods, adjustments]);
+  }, [activeSku, periods, adjustments, applyCausal, start, end, pollJob]);
 
-  const addAdjustment = () =>
-    setAdjustments((a) => [
-      ...a,
-      { feature: features[0] ?? "", type: "Percentage Change", value: 10 },
-    ]);
-  const patchAdjustment = (i: number, patch: Partial<ScenarioAdjustment>) =>
-    setAdjustments((a) => a.map((x, j) => (j === i ? { ...x, ...patch } : x)));
-  const removeAdjustment = (i: number) =>
-    setAdjustments((a) => a.filter((_, j) => j !== i));
+  // Task 5 — auto-display all available features for the selected item (no manual
+  // "add"). Fetch the item's adjustable drivers up front; each is a toggle row.
+  const featuresQuery = useAsync(
+    () => (activeSku ? whatifService.causalFeatures(activeSku) : Promise.resolve(null)),
+    [activeSku],
+  );
+  const availableFeatures = useMemo(() => {
+    const d = featuresQuery.data;
+    const fromApi = d ? (d.exogAccountedFor.length ? d.exogAccountedFor : []) : [];
+    return fromApi.length ? fromApi : features; // fallback to run-derived features
+  }, [featuresQuery.data, features]);
+
+  const adjByFeature = useMemo(
+    () => new Map(adjustments.map((a) => [a.feature, a])),
+    [adjustments],
+  );
+  const DEFAULT_ADJ = { type: "Percentage Change" as WhatIfChangeType, value: 10 };
+  const toggleFeature = (f: string) =>
+    setAdjustments(
+      adjByFeature.has(f)
+        ? adjustments.filter((a) => a.feature !== f)
+        : [...adjustments, { feature: f, ...DEFAULT_ADJ }],
+    );
+  const patchFeature = (f: string, patch: Partial<ScenarioAdjustment>) =>
+    setAdjustments(adjustments.map((a) => (a.feature === f ? { ...a, ...patch } : a)));
+  const resetFeature = (f: string) => patchFeature(f, DEFAULT_ADJ);
+
+  const exportSeriesCsv = useCallback(() => {
+    if (!result) return;
+    const head = ["date", "baseline", "scenario"];
+    const rows = result.series.map((p) =>
+      [p.date, p.baseline ?? "", p.scenario ?? ""].join(","));
+    const summary = [
+      `# Scenario ${result.sku} · champion ${result.championModel}`,
+      `# baselineTotal,${result.baselineTotal}`,
+      `# scenarioTotal,${result.scenarioTotal ?? ""}`,
+      `# changePct,${result.changePct ?? ""}`,
+    ];
+    downloadFile(`scenario-${result.sku}.csv`, [...summary, head.join(","), ...rows].join("\r\n"));
+  }, [result]);
 
   const save = useCallback(async () => {
     if (!result) return;
@@ -240,13 +299,79 @@ export function ScenarioPlanningView() {
       title="Scenario Planning"
       description="What-If analysis — adjust feature assumptions and re-forecast against the baseline."
     >
+      {/* Phase X.ZA — shared WorkflowHero (navy hero-gradient), visually identical
+          to Step 3 · Profile & Route and Step 4 · Forecast. Only title/subtitle
+          differ. variant="network" matches the Profile hero motif. */}
       <WorkflowHero
-        step="Planning · Scenarios"
-        title="What-If Demand Simulation"
-        subtitle="Model price, promotion, and supply assumptions — then re-forecast against the baseline plan."
+        step="Step 6 · Scenarios"
+        title="What-If & Causal Sensitivity"
+        subtitle="Simulate price / promo / festival impact — with causal effect estimation via DoWhy"
         icon={SlidersHorizontal}
         variant="network"
       />
+
+      {/* "How to use this tab" (Streamlit expander 17178-17189). */}
+      <details className="rounded-md border border-border/60 bg-secondary/20 p-3">
+        <summary className="cursor-pointer text-sm font-medium text-foreground">ℹ️ How to use this tab</summary>
+        <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+          <p>
+            <strong>Causal Effect Estimation</strong> measures how much a lever (price, promo, discount)
+            actually moves demand for the selected {levelLabel.toLowerCase()}, adjusting for your other drivers.
+          </p>
+          <p>
+            <strong>What-If Feature Simulation</strong> applies a lever change over a date window and
+            re-forecasts against the baseline — or applies the causal estimate directly.
+          </p>
+          <p className="text-xs">
+            Best flow: estimate the causal effect first, then apply it in What-If to see the impact on the forecast.
+          </p>
+        </div>
+      </details>
+
+      {/* Scenario type — Streamlit radio (render_unified_scenarios_tab 17191-17197). */}
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-foreground">Scenario type</p>
+        <div className="flex flex-wrap gap-2">
+          {([["causal", "Causal Effect Estimation (DoWhy)"], ["whatif", "What-If Feature Simulation"]] as const).map(
+            ([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setMode(id)}
+                className={
+                  "rounded-md border px-3 py-1.5 text-sm transition-colors " +
+                  (mode === id
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border text-muted-foreground hover:bg-secondary/50")
+                }
+              >
+                {label}
+              </button>
+            ),
+          )}
+        </div>
+      </div>
+
+      {mode === "causal" ? (
+        <>
+          <Card>
+            <CardContent className="pt-6">
+              <Field label={levelLabel}>
+                <Select
+                  value={activeSku}
+                  onChange={setSku}
+                  options={skus.map((s) => ({ value: s, label: s }))}
+                  ariaLabel={levelLabel}
+                />
+              </Field>
+            </CardContent>
+          </Card>
+          <ScenarioCausalView sku={activeSku} />
+        </>
+      ) : null}
+
+      {mode === "whatif" ? (
+      <>
       {/* Build scenario */}
       <Card id="build" className="scroll-mt-24">
         <CardHeader>
@@ -254,74 +379,107 @@ export function ScenarioPlanningView() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="SKU">
+            <Field label={levelLabel}>
               <Select
                 value={activeSku}
                 onChange={setSku}
                 options={skus.map((s) => ({ value: s, label: s }))}
-                ariaLabel="SKU"
+                ariaLabel={levelLabel}
               />
             </Field>
             <Field label="Forecast Horizon">
-              <NumberInput
+              <NumericInput
                 min={1}
                 max={36}
                 value={periods}
                 onChange={(v) => setPeriods(v)}
+                onValidityChange={setHorizonValid}
+                hardLimit
                 ariaLabel="Forecast horizon"
+                label="Forecast horizon"
+                unit="months"
               />
             </Field>
           </div>
 
+          {/* Task 5 — all available features for this item, each a toggle row
+              (ON/OFF · editable value · reset). Only enabled rows are applied. */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
-                Assumptions
-              </p>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={addAdjustment}
-                disabled={features.length === 0}
-              >
-                <Plus className="size-4" /> Add adjustment
-              </Button>
-            </div>
-            {features.length === 0 ? (
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
+              Features
+            </p>
+            {featuresQuery.isLoading ? (
+              <Skeleton className="h-20 w-full" />
+            ) : availableFeatures.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                Run once to load this SKU’s adjustable features, then add assumptions.
+                No adjustable features detected for this {levelLabel.toLowerCase()}.
               </p>
-            ) : null}
-            {adjustments.map((a, i) => (
-              <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-[2fr_1.5fr_1fr_auto]">
-                <Select
-                  value={a.feature}
-                  onChange={(feature) => patchAdjustment(i, { feature })}
-                  options={features.map((f) => ({ value: f, label: f }))}
-                  ariaLabel="Feature"
-                />
-                <Select
-                  value={a.type}
-                  onChange={(t) => patchAdjustment(i, { type: t as WhatIfChangeType })}
-                  options={CHANGE_TYPES.map((t) => ({ value: t, label: t }))}
-                  ariaLabel="Change type"
-                />
-                <Input
-                  type="number"
-                  value={a.value}
-                  onChange={(e) => patchAdjustment(i, { value: Number(e.target.value) || 0 })}
-                  aria-label="Value"
-                  className="tabular-nums"
-                />
-                <Button variant="ghost" size="icon" onClick={() => removeAdjustment(i)} aria-label="Remove">
-                  <X className="size-4" />
-                </Button>
-              </div>
-            ))}
+            ) : (
+              availableFeatures.map((f) => {
+                const adj = adjByFeature.get(f);
+                const on = !!adj;
+                return (
+                  <div key={f} className="grid grid-cols-1 items-center gap-2 rounded-md border border-border/60 p-2 sm:grid-cols-[1.4fr_1.4fr_1fr_auto]">
+                    <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <input type="checkbox" checked={on} onChange={() => toggleFeature(f)} aria-label={`Enable ${f}`} />
+                      {f}
+                    </label>
+                    {on ? (
+                      <>
+                        <Select
+                          value={adj!.type}
+                          onChange={(t) => patchFeature(f, { type: t as WhatIfChangeType })}
+                          options={CHANGE_TYPES.map((t) => ({ value: t, label: t }))}
+                          ariaLabel={`${f} change type`}
+                        />
+                        <NumericInput
+                          value={adj!.value}
+                          onChange={(value) => patchFeature(f, { value })}
+                          allowFloat
+                          ariaLabel={`${f} value`}
+                          className="tabular-nums"
+                        />
+                        <Button variant="ghost" size="sm" onClick={() => resetFeature(f)} aria-label={`Reset ${f}`}>
+                          Reset
+                        </Button>
+                      </>
+                    ) : (
+                      <span className="text-xs text-muted-foreground sm:col-span-3">Off — original value retained</span>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
 
+          {/* Run simulation window — Streamlit "#### 3. Run simulation" start/end. */}
+          <div className="space-y-2">
+            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
+              Apply over (optional date window)
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Start">
+                <Input type="date" value={start} onChange={(e) => setWindow({ start: e.target.value })} aria-label="Start date" />
+              </Field>
+              <Field label="End">
+                <Input type="date" value={end} onChange={(e) => setWindow({ end: e.target.value })} aria-label="End date" />
+              </Field>
+            </div>
+          </div>
+
+          {adjustments.length === 1 ? (
+            <label className="flex items-center gap-2 text-xs text-foreground">
+              <input
+                type="checkbox"
+                checked={applyCausal}
+                onChange={(e) => setApplyCausal(e.target.checked)}
+              />
+              Apply causal estimate from DoWhy (model-agnostic) instead of re-forecasting
+            </label>
+          ) : null}
+
           <div className="flex items-center gap-3 border-t border-border/60 pt-4">
-            <Button onClick={() => void run()} disabled={running || !activeSku} className="sm:w-56">
+            <Button onClick={() => void run()} disabled={running || !activeSku || !horizonValid} className="sm:w-56">
               {running ? (
                 <><Loader2 className="size-4 animate-spin" /> {`Running… ${progress}%`}</>
               ) : (
@@ -362,7 +520,12 @@ export function ScenarioPlanningView() {
 
           <Card>
             <CardContent className="space-y-3 pt-6">
-              <h3 className="text-sm font-medium text-foreground">Baseline vs Scenario</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-foreground">Baseline vs Scenario</h3>
+                <Button variant="outline" size="sm" onClick={exportSeriesCsv}>
+                  <Download className="size-3.5" /> CSV
+                </Button>
+              </div>
               <ScenarioChart result={result} />
             </CardContent>
           </Card>
@@ -402,7 +565,7 @@ export function ScenarioPlanningView() {
                 <thead className="bg-card text-left text-xs text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 font-medium">Name</th>
-                    <th className="px-3 py-2 font-medium">SKU</th>
+                    <th className="px-3 py-2 font-medium">{levelLabel}</th>
                     <th className="px-3 py-2 font-medium">Model</th>
                     <th className="px-3 py-2 text-right font-medium">Change %</th>
                     <th className="px-3 py-2 text-right font-medium">Actions</th>
@@ -431,6 +594,8 @@ export function ScenarioPlanningView() {
           )}
         </CardContent>
       </Card>
+      </>
+      ) : null}
     </PageShell>
   );
 }

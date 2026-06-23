@@ -13,3 +13,4 @@ export { workflowService } from "./workflow.service";
 export { workspaceService } from "./workspace.service";
 export { edaService } from "./eda.service";
 export { segmentationService } from "./segmentation.service";
+export { explainabilityService } from "./explainability.service";

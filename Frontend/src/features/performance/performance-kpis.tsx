@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/lib/utils/format";
 import type { ForecastRunMetrics } from "@/types/forecast";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import { wmapeTone, type Tone } from "./derive";
 
 const TONE_TEXT: Record<Tone, string> = {
@@ -55,6 +56,7 @@ function signedPct(v: number | null): string {
  * backtest coverage. Mirrors the Streamlit Performance KPI strip.
  */
 export function PerformanceKpiStrip({ data }: { data: ForecastRunMetrics }) {
+  const { plural: levelPlural } = useForecastLevel();
   // Pooled overall metrics from the server (Streamlit _aggregate_metrics parity):
   // Σ|resid|/Σactual, pooled SMAPE, pooled bias — NOT averages of per-SKU values.
   const o = data.groups.overall;
@@ -79,7 +81,7 @@ export function PerformanceKpiStrip({ data }: { data: ForecastRunMetrics }) {
       <Tile
         label="Backtest coverage"
         value={pct(o.coveragePct)}
-        meta={`${formatNumber(o.skuCount)} of ${formatNumber(total)} SKUs evaluated`}
+        meta={`${formatNumber(o.skuCount)} of ${formatNumber(total)} ${levelPlural} evaluated`}
       />
     </div>
   );

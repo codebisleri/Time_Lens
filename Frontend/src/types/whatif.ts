@@ -47,6 +47,92 @@ export interface RunScenarioPayload {
   start?: string;
   end?: string;
   datasetId?: ID;
+  /** Apply a DoWhy causal estimate (ATE) directly to the baseline (parity with
+   *  render_whatif_tab's "Apply causal estimate from DoWhy" option). */
+  causalAte?: number;
+}
+
+// ── Causal Effect Estimation (DoWhy) — parity with render_causal_tab ──────────
+export interface CausalFeaturesResponse {
+  available: boolean; // DoWhy + graphviz installed
+  columns: string[]; // candidate treatments / confounders ("potential")
+  outcome: string | null;
+  exogAccountedFor: string[];
+  message: string;
+}
+
+export interface CausalEstimateRow {
+  Treatment: string;
+  "Causal Estimate": number | null;
+  "Causal Effect (per +1 unit)": number | null;
+  "Elasticity (% per +1%)": number | null;
+  Robustness: string;
+  Interpretation: string;
+  reliabilityLevel: "success" | "info" | "warning";
+  reliabilityHead: string;
+  reliabilityExpl: string;
+}
+
+export interface CausalMethodRow {
+  Treatment: string;
+  Method: string;
+  "Causal Effect": number | null;
+  "CI low": number | null;
+  "CI high": number | null;
+  "p-value": number | null;
+  Note: string;
+}
+
+export interface CausalRefutationRow {
+  Treatment: string;
+  Refuter: string;
+  "Refuted effect": number | null;
+  Verdict: string;
+  "p-value": number | null;
+}
+
+export interface CausalRunResult {
+  sku: string;
+  outcome: string;
+  potential: string[];
+  exogAccountedFor: string[];
+  estimates: CausalEstimateRow[];
+  methodComparison: CausalMethodRow[];
+  refutation: CausalRefutationRow[];
+  estimands: Record<string, string>;
+  dotGraph: string;
+  variables: {
+    treatments: string[];
+    outcome: string;
+    confounders: string[];
+    instruments: string[];
+    effect_modifiers: string[];
+  };
+  generatedAt: ISODateString;
+}
+
+export interface RunCausalPayload {
+  skuId: string;
+  treatments: string[];
+  confounders?: string[];
+  instruments?: string[];
+  effectModifiers?: string[];
+  methods?: string[];
+  refuters?: string[];
+  computeCi?: boolean;
+  datasetId?: ID;
+}
+
+export interface DriverRow {
+  Lever: string;
+  "Impact on demand": number | null;
+}
+
+export interface DriversResult {
+  sku: string;
+  outcome: string;
+  ranked: DriverRow[];
+  generatedAt: ISODateString;
 }
 
 export interface SavedScenarioRow {

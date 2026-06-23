@@ -24,6 +24,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { formatDate, formatNumber } from "@/lib/utils/format";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type { Dataset } from "@/types/dataset";
 import { useActiveDataset, useDatasetCategories } from "./hooks/use-active-dataset";
 import { PrepTile, PrepTilesSkeleton, type TileTone } from "./prep-tiles";
@@ -96,6 +97,7 @@ function SummarySection({
   dataset: Dataset;
   categories: number | null;
 }) {
+  const { label: levelLabel } = useForecastLevel();
   const range = dataset.dateRange
     ? `${formatDate(dataset.dateRange.start)} – ${formatDate(dataset.dateRange.end)}`
     : "—";
@@ -110,7 +112,7 @@ function SummarySection({
           <PrepTile icon={CalendarRange} label="Date range" value={range} />
           <PrepTile
             icon={Boxes}
-            label="SKU count"
+            label={`${levelLabel} count`}
             value={formatNumber(dataset.skuCount ?? 0)}
           />
           <PrepTile

@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { AppHeader } from "./app-header";
 import { GlobalLoadingBar } from "./global-loading-bar";
 import { UpdateDialog } from "@/components/desktop/update-dialog";
+import { AssistantWidget } from "@/features/assistant/assistant-widget";
 import { Sidebar, useSidebarWidth } from "./sidebar";
 
 /**
@@ -30,6 +31,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <main className="flex-1">{children}</main>
       </div>
+      <AssistantWidget />
     </div>
   );
 }

@@ -119,6 +119,20 @@ export interface DatasetPreview {
   schema: DatasetSchemaRow[];
 }
 
+/** Per-forecast-level categorical attributes for the dynamic filter UI (X.Q). */
+export interface LevelAttributeColumn {
+  key: string;
+  label: string;
+}
+export interface LevelAttributeEntity {
+  entity: string;
+  attrs: Record<string, string>;
+}
+export interface LevelAttributes {
+  columns: LevelAttributeColumn[];
+  entities: LevelAttributeEntity[];
+}
+
 export interface Dataset {
   id: ID;
   fileName: string;

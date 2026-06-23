@@ -45,11 +45,60 @@ function pipeLogs(child, tag) {
 }
 
 /**
+ * Optional, crash-proof env-file loader (Phase X.N · Tasks 1 & 8).
+ *
+ * Lets a demo operator configure runtime-only secrets (ANTHROPIC_API_KEY,
+ * ASSISTANT_MODEL, ENABLE_AI_ASSISTANT) WITHOUT rebuilding — drop a `.env` next
+ * to the app's resources. Packaged → `<resourcesPath>/.env` (resolved via
+ * process.resourcesPath, never a hardcoded path). Dev → `<appRoot>/.env.local`
+ * then `.env`. The REAL OS environment always wins; the file only fills gaps.
+ * Any parse/IO error is swallowed — a missing or malformed file must NEVER stop
+ * the app from launching.
+ */
+let cachedEnv = null;
+function extraEnv(ctx) {
+  if (cachedEnv) return cachedEnv;
+  cachedEnv = {};
+  try {
+    const candidates = ctx.isPackaged
+      ? [path.join(ctx.resourcesPath, ".env")]
+      : [path.join(ctx.appRoot, ".env.local"), path.join(ctx.appRoot, ".env")];
+    for (const file of candidates) {
+      if (!fs.existsSync(file)) continue;
+      const text = fs.readFileSync(file, "utf8");
+      for (const raw of text.split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line || line.startsWith("#")) continue;
+        const eq = line.indexOf("=");
+        if (eq <= 0) continue;
+        const key = line.slice(0, eq).trim();
+        let val = line.slice(eq + 1).trim();
+        if (
+          (val.startsWith('"') && val.endsWith('"')) ||
+          (val.startsWith("'") && val.endsWith("'"))
+        ) {
+          val = val.slice(1, -1);
+        }
+        // Only fill keys absent from the real environment (OS env wins).
+        if (key && !(key in process.env) && !(key in cachedEnv)) cachedEnv[key] = val;
+      }
+    }
+    const found = Object.keys(cachedEnv);
+    if (found.length) log("loaded env file keys:", found.join(", "));
+  } catch (e) {
+    log("env file load skipped:", e?.message);
+    cachedEnv = {};
+  }
+  return cachedEnv;
+}
+
+/**
  * Start the FastAPI backend.
  * @param {{ isPackaged: boolean, resourcesPath: string, appRoot: string, dataDir: string, electronExec: string }} ctx
  */
 async function startBackend(ctx) {
   const env = {
+    ...extraEnv(ctx),
     ...process.env,
     TIMELENS_HOST: BACKEND_HOST,
     TIMELENS_PORT: String(BACKEND_PORT),
@@ -102,6 +151,10 @@ async function startWeb(ctx) {
   const serverJs = path.join(ctx.resourcesPath, "web", "server.js");
   if (!fs.existsSync(serverJs)) throw new Error(`Next server missing at ${serverJs}`);
   const env = {
+    // Assistant config (ANTHROPIC_API_KEY / ASSISTANT_MODEL / ENABLE_AI_ASSISTANT)
+    // from an optional resources/.env reaches the Next route handler here. OS env
+    // still wins. None of these are required — the assistant degrades gracefully.
+    ...extraEnv(ctx),
     ...process.env,
     ELECTRON_RUN_AS_NODE: "1", // run the Electron binary as plain Node
     PORT: String(WEB_PORT),

@@ -3,6 +3,7 @@
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/lib/utils/format";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type { SubmissionKpis } from "@/types/submission";
 
 function signedPct(value: number | null): string {
@@ -54,6 +55,7 @@ function Tile({
 
 /** The 5-tile Submission KPI strip — units, Δ%, MoM/YoY trend, overrides. */
 export function SubmissionKpiStrip({ kpis }: { kpis: SubmissionKpis }) {
+  const { label: levelLabel } = useForecastLevel();
   const deltaTone =
     kpis.deltaPct > 0 ? "up" : kpis.deltaPct < 0 ? "down" : "neutral";
 
@@ -74,7 +76,7 @@ export function SubmissionKpiStrip({ kpis }: { kpis: SubmissionKpis }) {
       <Tile
         label="Overrides"
         value={formatNumber(kpis.overrideCells)}
-        sub={`${formatNumber(kpis.overrideSkus)} SKU(s) · ${formatNumber(kpis.skuCount)} in view`}
+        sub={`${formatNumber(kpis.overrideSkus)} ${levelLabel}(s) · ${formatNumber(kpis.skuCount)} in view`}
       />
     </div>
   );

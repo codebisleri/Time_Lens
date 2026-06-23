@@ -12,6 +12,7 @@ import {
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/lib/utils/format";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type { ReportSummary } from "@/types/report";
 
 type Tone = "success" | "warning" | "destructive" | "info" | "muted";
@@ -124,6 +125,7 @@ function StatusPanel({
  * health, planning status, demand coverage, and model readiness.
  */
 export function ForecastIntelligenceStrip({ summary }: { summary: ReportSummary }) {
+  const { plural: levelPlural } = useForecastLevel();
   const { dataset, forecast } = summary;
   const skuTotal = dataset.skuCount ?? 0;
   const forecasted = forecast.skusForecasted ?? 0;
@@ -175,7 +177,7 @@ export function ForecastIntelligenceStrip({ summary }: { summary: ReportSummary 
         value={formatNumber(Math.round(forecast.totalForecastUnits ?? 0))}
         tone={hasRun ? "success" : "muted"}
         chip={hasRun ? "Projected" : "—"}
-        meta={`${formatNumber(forecasted)} of ${formatNumber(skuTotal)} SKUs forecast`}
+        meta={`${formatNumber(forecasted)} of ${formatNumber(skuTotal)} ${levelPlural} forecast`}
       />
       <StatusPanel
         icon={Layers}
@@ -184,7 +186,7 @@ export function ForecastIntelligenceStrip({ summary }: { summary: ReportSummary 
         tone={readyTone}
         chip={readiness >= 80 ? "Ready" : hasRun ? "Partial" : "Idle"}
         progress={readiness}
-        meta="SKUs routed & forecast vs portfolio"
+        meta={`${levelPlural} routed & forecast vs portfolio`}
       />
     </section>
   );

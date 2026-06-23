@@ -19,7 +19,7 @@ import { CommandTrigger } from "./navbar/command-trigger";
  * on every screen (and, in `minimal` mode, on login).
  *
  *   [☰] DHISHAAI | TIME LENS · Enterprise Forecast Intelligence Platform
- *                       ‹ current module ›        🔎 🔔 ENV v2.0 ◐ ⚙ ◍
+ *                       ‹ current module ›        🔎 🔔 ENV v1.0.0 ◐ ⚙ ◍
  *
  * Branding lives ONLY here (the sidebar no longer repeats the logo/title).
  * Purely presentational; no routing/auth/state logic.

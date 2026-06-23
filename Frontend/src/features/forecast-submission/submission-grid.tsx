@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { formatDate, formatNumber } from "@/lib/utils/format";
+import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type { SubmissionEdit, SubmissionRow } from "@/types/submission";
 
 const HEADERS: { key: string; label: string; align?: "right" }[] = [
@@ -60,6 +61,10 @@ export function SubmissionGrid({
   disabled: boolean;
   onEdit: (edit: SubmissionEdit) => void;
 }) {
+  const { label: levelLabel } = useForecastLevel();
+  const headers = HEADERS.map((h) =>
+    h.key === "sku" ? { ...h, label: levelLabel } : h,
+  );
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
 
   // Reseed local text/number drafts whenever the backing rows change (after a
@@ -113,7 +118,7 @@ export function SubmissionGrid({
       <table className="w-full border-collapse">
         <thead>
           <tr>
-            {HEADERS.map((h) => (
+            {headers.map((h) => (
               <th
                 key={h.key}
                 className={cn(TH, h.align === "right" && "text-right")}

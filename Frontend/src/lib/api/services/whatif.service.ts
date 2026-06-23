@@ -2,6 +2,8 @@ import { http } from "../client";
 import { endpoints } from "../endpoints";
 import type { ForecastJob } from "@/types/forecast";
 import type {
+  CausalFeaturesResponse,
+  RunCausalPayload,
   RunScenarioPayload,
   SavedScenarioRow,
   ScenarioDetail,
@@ -32,5 +34,22 @@ export const whatifService = {
   },
   remove(id: string): Promise<{ deleted: string }> {
     return http.delete<{ deleted: string }>(endpoints.scenarios.remove(id));
+  },
+
+  // ── Causal Effect Estimation (DoWhy) ──────────────────────────────────────
+  /** Candidate levers + DoWhy availability for a SKU (no estimation). */
+  causalFeatures(skuId: string, datasetId?: string): Promise<CausalFeaturesResponse> {
+    return http.get<CausalFeaturesResponse>(endpoints.scenarios.causalFeatures(), {
+      skuId,
+      datasetId,
+    });
+  },
+  /** Estimate causal effects — returns a job to poll (result = CausalRunResult). */
+  causalRun(payload: RunCausalPayload): Promise<ForecastJob> {
+    return http.post<ForecastJob>(endpoints.scenarios.causalRun(), payload);
+  },
+  /** Rank every lever by impact — returns a job to poll (result = DriversResult). */
+  causalDrivers(payload: { skuId: string; useAllConfounders?: boolean; datasetId?: string }): Promise<ForecastJob> {
+    return http.post<ForecastJob>(endpoints.scenarios.causalDrivers(), payload);
   },
 };

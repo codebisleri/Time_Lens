@@ -34,6 +34,7 @@ import sys
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -69,6 +70,7 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 import app_v2_6 as engine  # noqa: E402  — heavy import: the forecasting engine
+import scenario_engine  # noqa: E402  — Scenario causal (DoWhy) service, parity extract
 
 
 # ── Headless Streamlit shim ───────────────────────────────────────────────────
@@ -1868,6 +1870,52 @@ def get_dataset(dataset_id: str) -> Dict[str, Any]:
     return dataset_to_json(load_dataset_row(dataset_id))
 
 
+@app.get("/datasets/{dataset_id}/level-attributes")
+def get_level_attributes(dataset_id: str) -> Dict[str, Any]:
+    """Per-forecast-level categorical attribute values for the dynamic filter UI
+    (Phase X.Q · Task 2). READ-ONLY — does not touch any forecasting math. Returns
+    the low-cardinality categorical columns actually present in the dataset
+    (excluding the date / sales / level columns) and, for each forecast-level
+    entity, the value of each such column. The frontend builds its dynamic
+    column/value filters entirely from this — nothing is hardcoded."""
+    ds = dict(load_dataset_row(dataset_id))
+    df = load_dataset_df(ds)
+    sku_col = str(ds["sku_col"])
+    exclude = {sku_col, str(ds["date_col"]), str(ds["sales_col"])}
+    MAX_DISTINCT = 50
+
+    def _label(col: str) -> str:
+        return " ".join(w.capitalize() for w in str(col).replace("_", " ").split())
+
+    cat_cols: List[str] = []
+    for c in [str(c) for c in df.columns]:
+        if c in exclude:
+            continue
+        s = df[c]
+        if pd.api.types.is_numeric_dtype(s):
+            continue
+        try:
+            n_distinct = int(s.astype(str).nunique(dropna=True))
+        except Exception:
+            continue
+        if 1 <= n_distinct <= MAX_DISTINCT:
+            cat_cols.append(c)
+
+    columns = [{"key": c, "label": _label(c)} for c in cat_cols]
+    entities: List[Dict[str, Any]] = []
+    if cat_cols:
+        # First non-null value of each categorical column per forecast-level entity.
+        first_vals = df.groupby(df[sku_col].astype(str))[cat_cols].first()
+        for entity, row in first_vals.iterrows():
+            attrs: Dict[str, str] = {}
+            for c in cat_cols:
+                v = row[c]
+                if pd.notna(v):
+                    attrs[c] = str(v)
+            entities.append({"entity": str(entity), "attrs": attrs})
+    return {"columns": columns, "entities": entities}
+
+
 # ── Data page — configuration, preview, and exports ───────────────────────────
 def _csv_response(text: str, filename: str) -> Response:
     return Response(
@@ -2206,7 +2254,8 @@ def _forecast_worker(job_id: str, ds: Dict[str, Any], chosen_skus: List[str],
                      periods: int, freq: str, horizon: str,
                      compare_algos: Optional[List[str]] = None,
                      cv_mode: bool = False, reconcile: bool = False,
-                     use_global: bool = False, evaluate_oos: bool = True) -> None:
+                     use_global: bool = False, evaluate_oos: bool = True,
+                     segment_secondary: Optional[Dict[str, List[str]]] = None) -> None:
     """Background thread: runs the engine over `chosen_skus`, persisting each
     forecast and updating the job's progress. `ds` is a plain dict snapshot of
     the dataset row so nothing is shared across threads except the in-memory
@@ -2274,6 +2323,34 @@ def _forecast_worker(job_id: str, ds: Dict[str, Any], chosen_skus: List[str],
             run_keys = chosen_skus
         prof_by_sku = {str(rec["sku"]): rec for rec in profiles.to_dict("records")}
 
+        # ── Phase X.G — segment propagation (DISPLAY only) ───────────────────
+        # The per-SKU profile table is built with segment_col="" so its `segment`
+        # is "unknown" (business segments are COMPUTED in Profile & Route, not a
+        # raw column). Pull the saved Profile & Route business segment — the SAME
+        # source the Profile page shows — and use it for forecast OUTPUTS so the
+        # performance/champion tables, reports and exports never read "unknown".
+        # `profile_row` is intentionally NOT mutated → routing/candidate-pool and
+        # the chosen primary are unchanged. SKU grain only (the saved segmentation
+        # is keyed by the dataset SKU column; custom/enterprise grain is left as-is).
+        seg_by_sku: Dict[str, str] = {}
+        if level_mode == "sku":
+            try:
+                _seg_res = _build_segmentation(dict(ds), _resolve_seg_params(_seg_param_overrides({})))
+                for _s in _seg_res.get("skus", []):
+                    _sv = _s.get("segment")
+                    if _sv and str(_sv).strip().lower() != "unknown":
+                        seg_by_sku[str(_s.get("sku"))] = str(_sv)
+            except Exception as exc:  # best-effort; never block the forecast
+                logging.warning("segment propagation lookup failed: %s", exc)
+
+        def _seg_for(sku_key: Any, profile_row: Dict[str, Any]) -> Optional[str]:
+            """Priority: saved Profile & Route segment → profile segment → None."""
+            saved = seg_by_sku.get(str(sku_key))
+            if saved:
+                return saved
+            ps = profile_row.get("segment")
+            return str(ps) if ps and str(ps).strip().lower() != "unknown" else None
+
         panel = engine.build_panel_features(
             df, date_col=ds["date_col"], sales_col=ds["sales_col"],
             sku_col=skc, freq=freq,
@@ -2325,41 +2402,96 @@ def _forecast_worker(job_id: str, ds: Dict[str, Any], chosen_skus: List[str],
                 detail = build_forecast_detail(
                     res, history, horizon,
                     brand=(str(profile_row.get("brand")) if profile_row.get("brand") else None),
-                    segment=(str(profile_row.get("segment")) if profile_row.get("segment") else None),
+                    segment=_seg_for(res.sku, profile_row),  # Phase X.G — saved segment
                 )
                 units = clean_float(res.forecast.sum()) if isinstance(res.forecast, pd.Series) else None
                 return detail, units
 
-            # Forecast AND persist each entity LIVE — results are visible via
-            # /forecasts as soon as each one finishes (no whole-run deferral), so
-            # completed work is never lost and the UI never sits empty.
+            # ── Phase X.Y — PARALLEL per-entity forecasting ──────────────────
+            # Each forecast level is INDEPENDENT and order-free: forecast_one_sku
+            # only READS shared inputs (panel / global_pkg / profile_row) and all
+            # randomness is per-estimator (random_state=42), so concurrent
+            # execution yields byte-identical results — the math, champion
+            # selection, WMAPE, CIs and business rules are untouched. The heavy
+            # numeric work (statsmodels / sklearn / lightgbm / numpy) releases the
+            # GIL, so a thread pool delivers real speedup WITHOUT pickling the
+            # large shared panel into subprocesses (which on Windows-spawn would be
+            # slow and risk subtle divergence).
+            #
+            # Compute is parallel; PERSISTENCE is single-threaded and walks
+            # run_keys IN ORDER, so DB rows, `result_objs` and the reconciliation
+            # inputs stay deterministic regardless of completion order (Task 3).
+            # The single SQLite connection is thus only ever touched by this thread.
             persisted: Dict[str, Any] = {}   # sku -> (fc_id, profile_row)
             result_objs: List[Any] = []
-            for i, sku in enumerate(run_keys):
-                profile_row = prof_by_sku.get(sku, {})
-                # Heartbeat eases progress across this SKU's band while the
-                # (long, opaque) competition runs — so it never looks frozen.
-                hb.step(f"Forecasting {sku} ({i + 1} of {total})", i / total, (i + 1) / total)
+            results_by_sku: Dict[str, Any] = {}
+
+            def _compute_one(sku: str) -> Any:
+                pr = prof_by_sku.get(sku, {})
+                # Merge this item's per-segment SECONDARY models into its candidate
+                # pool (Task 2). Champion stays lowest-WMAPE; the primary/auto route
+                # is unchanged — these are ADDITIONAL candidates only.
+                extra = list(compare_algos or [])
+                _seg = _seg_for(sku, pr)
+                if _seg and (segment_secondary or {}).get(_seg):
+                    for _m in segment_secondary[_seg]:
+                        if _m and _m not in extra:
+                            extra.append(_m)
+                return engine.forecast_one_sku(
+                    sku=sku, panel=panel, profile_row=pr,
+                    h=periods, freq=freq,
+                    sku_col=skc, date_col=ds["date_col"],
+                    sales_col=ds["sales_col"],
+                    global_pkg=global_pkg, global_pkg_backtest=global_pkg_backtest,
+                    run_backtest=evaluate_oos, cv_mode=cv_mode, cfg=None,
+                    compare_algos=extra or None,
+                )
+
+            workers = min(os.cpu_count() or 1, 8)
+            _t_start = time.time()
+            completed = 0
+
+            def _note_progress() -> None:
+                """Advance job progress + ETA after each level finishes (Task 4)."""
+                nonlocal completed
+                completed += 1
+                hb.step(f"Forecasting ({completed} of {total})",
+                        (completed - 1) / max(total, 1), completed / max(total, 1))
+                elapsed = time.time() - _t_start
+                eta = int(elapsed / completed * (total - completed)) if completed else 0
                 _job_update(
                     job_id,
-                    progress=int((i + 0.5) / total * 100),
-                    message=f"Forecasting {sku} ({i + 1} of {total})",
+                    progress=int(completed / max(total, 1) * 100),
+                    message=f"Completed {completed} / {total} · ~{eta}s remaining",
                 )
-                try:
-                    res = engine.forecast_one_sku(
-                        sku=sku, panel=panel, profile_row=profile_row,
-                        h=periods, freq=freq,
-                        sku_col=skc, date_col=ds["date_col"],
-                        sales_col=ds["sales_col"],
-                        global_pkg=global_pkg, global_pkg_backtest=global_pkg_backtest,
-                        run_backtest=evaluate_oos, cv_mode=cv_mode, cfg=None,
-                        compare_algos=compare_algos or None,
-                    )
-                except Exception as exc:  # skip a failing entity, keep the run going
-                    logging.warning("forecast_one_sku failed for %s: %s", sku, exc)
-                    _job_update(job_id, progress=int((i + 1) / total * 100))
-                    continue
 
+            # Parallel for real runs; serial fallback for tiny runs avoids pool
+            # overhead and keeps single-entity behaviour byte-for-byte identical.
+            if workers > 1 and total > 1:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    futures = {pool.submit(_compute_one, sku): sku for sku in run_keys}
+                    for fut in as_completed(futures):
+                        sku = futures[fut]
+                        try:
+                            results_by_sku[sku] = fut.result()
+                        except Exception as exc:  # skip a failing entity, keep going
+                            logging.warning("forecast_one_sku failed for %s: %s", sku, exc)
+                        _note_progress()
+            else:
+                for sku in run_keys:
+                    try:
+                        results_by_sku[sku] = _compute_one(sku)
+                    except Exception as exc:
+                        logging.warning("forecast_one_sku failed for %s: %s", sku, exc)
+                    _note_progress()
+
+            # Persist IN run_keys ORDER — deterministic DB rows + result_objs,
+            # single-threaded SQLite writes (Task 3).
+            for sku in run_keys:
+                res = results_by_sku.get(sku)
+                if res is None:
+                    continue
+                profile_row = prof_by_sku.get(sku, {})
                 detail, units = _detail_and_units(res, profile_row)
                 fc_id = f"fc_{uuid.uuid4().hex[:12]}"
                 if isinstance(res.forecast, pd.Series):
@@ -2371,18 +2503,18 @@ def _forecast_worker(job_id: str, ds: Dict[str, Any], chosen_skus: List[str],
                         generated_at, detail_json)
                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (fc_id, run_id, ds["id"], sku, sku, sku,
-                     str(profile_row.get("segment") or "Uncategorized"),
+                     (_seg_for(sku, profile_row) or "Uncategorized"),  # Phase X.G — saved segment
                      detail["model"], horizon,
                      detail["metrics"]["accuracy"], detail["metrics"]["mape"],
                      detail["metrics"]["smape"], detail["metrics"]["bias"],
                      units, detail["generatedAt"],
                      json.dumps({**detail, "id": fc_id})),
                 )
-                conn.commit()  # live per-entity commit → /forecasts updates during the run
+                conn.commit()  # ordered per-entity commit → /forecasts populates in order
                 produced += 1
                 persisted[sku] = (fc_id, profile_row)
                 result_objs.append(res)
-                _job_update(job_id, progress=int((i + 1) / total * 100), skuCount=produced)
+                _job_update(job_id, skuCount=produced)
 
             # Per-SKU competition done — pin the heartbeat to the finalize band.
             hb.step("Finalizing", 0.96, 0.99)
@@ -2510,6 +2642,14 @@ def start_forecast_run(payload: Optional[Dict[str, Any]] = None) -> Dict[str, An
     segments = [str(s) for s in (payload.get("segments") or [])]
     sample_per = int(payload.get("samplePerStrategy") or 3)
     compare_algos = [str(a) for a in (payload.get("compareAlgos") or [])] or None
+    # Phase X.X.2 · Task 2 — per-segment SECONDARY models. Extra candidates merged
+    # into each item's pool by its segment; champion selection is unchanged
+    # (lowest WMAPE still wins). {segment_name: [model_key, …]}.
+    _seg_sec_raw = payload.get("segmentSecondary") or {}
+    segment_secondary = (
+        {str(k): [str(m) for m in (v or [])] for k, v in _seg_sec_raw.items()}
+        if isinstance(_seg_sec_raw, dict) else {}
+    )
     cv_mode = bool(payload.get("cvMode"))
     reconcile = bool(payload.get("reconcile"))
     use_global = bool(payload.get("useGlobal"))
@@ -2569,7 +2709,7 @@ def start_forecast_run(payload: Optional[Dict[str, Any]] = None) -> Dict[str, An
     threading.Thread(
         target=_forecast_worker,
         args=(job_id, ds, chosen_skus, periods, freq, horizon, compare_algos,
-              cv_mode, reconcile, use_global, evaluate_oos),
+              cv_mode, reconcile, use_global, evaluate_oos, segment_secondary),
         daemon=True,
     ).start()
 
@@ -2888,9 +3028,41 @@ def _apply_whatif_rules(exog: "pd.DataFrame", rules: List[Dict[str, Any]],
     return sx
 
 
+def _apply_causal_adjustment(baseline: "pd.Series", exog: "pd.DataFrame",
+                             rule: Dict[str, Any], ate: float,
+                             start: Optional[str], end: Optional[str]) -> Optional["pd.Series"]:
+    """Causal-adjustment what-if (source render_whatif_tab 16098-16113): apply the
+    DoWhy causal estimate (ATE) of one lever directly to the baseline, instead of
+    re-forecasting through the model. Works for ANY champion model."""
+    feat = rule.get("feature")
+    t = str(rule.get("type") or "")
+    try:
+        v = float(rule.get("value"))
+    except (TypeError, ValueError):
+        return None
+    if exog is None or feat not in getattr(exog, "columns", []):
+        return None
+    mask = pd.Series(True, index=exog.index)
+    if start:
+        mask &= exog.index >= pd.to_datetime(start)
+    if end:
+        mask &= exog.index <= pd.to_datetime(end)
+    if t == "Percentage Change":
+        delta_f = exog.loc[mask, feat] * (v / 100)
+    elif t == "Constant Change":
+        delta_f = v
+    else:  # "Set to New Value"
+        delta_f = v - exog.loc[mask, feat]
+    sales_impact = delta_f * float(ate)
+    whatif = baseline.copy()
+    whatif.loc[mask] = whatif.loc[mask] + sales_impact
+    return whatif
+
+
 def _whatif_worker(job_id: str, ds: Dict[str, Any], sku: str, periods: int,
                    models: List[str], adjustments: List[Dict[str, Any]],
-                   start: Optional[str], end: Optional[str]) -> None:
+                   start: Optional[str], end: Optional[str],
+                   causal_ate: Optional[float] = None) -> None:
     _job_update(job_id, status="running", progress=10, startedAt=now_iso(),
                 message=f"Fitting {sku}…")
     try:
@@ -2918,11 +3090,23 @@ def _whatif_worker(job_id: str, ds: Dict[str, Any], sku: str, periods: int,
 
         whatif: Optional[pd.Series] = None
         message = ""
+        # Causal-adjustment path (source 16098-16113): when the caller supplies a
+        # DoWhy ATE, apply it directly to the baseline — works for ANY model.
+        used_causal = causal_ate is not None and bool(adjustments)
+        if used_causal:
+            _job_update(job_id, progress=70, message="Applying causal estimate…")
+            whatif = _apply_causal_adjustment(
+                baseline, exog, adjustments[0], causal_ate, start, end)
+            if whatif is None:
+                message = ("Causal adjustment unavailable — the lever isn't an "
+                           "exogenous feature of this forecast.")
         supported = (
             model_name in ("prophet", "auto_arima", "sarimax")
             and bool(avail) and base_model is not None
         )
-        if not supported:
+        if used_causal:
+            pass
+        elif not supported:
             if model_name not in ("prophet", "auto_arima", "sarimax"):
                 message = (f"What-if re-forecast not supported for "
                            f"{str(model_name).upper()}. Re-run with Prophet / "
@@ -3023,6 +3207,13 @@ def run_scenario(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     adjustments = payload.get("adjustments") or []
     start = payload.get("start")
     end = payload.get("end")
+    # Optional DoWhy causal estimate (ATE) to apply directly to the baseline
+    # instead of re-forecasting (source what-if "Apply causal estimate" path).
+    causal_ate = payload.get("causalAte")
+    try:
+        causal_ate = float(causal_ate) if causal_ate is not None else None
+    except (TypeError, ValueError):
+        causal_ate = None
     ds = dict(load_dataset_row(ds_id))
 
     job_id = f"job_{uuid.uuid4().hex[:12]}"
@@ -3036,7 +3227,7 @@ def run_scenario(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         _JOBS[job_id] = job
     threading.Thread(
         target=_whatif_worker,
-        args=(job_id, ds, sku, periods, models, adjustments, start, end),
+        args=(job_id, ds, sku, periods, models, adjustments, start, end, causal_ate),
         daemon=True,
     ).start()
     return dict(job)
@@ -3111,6 +3302,186 @@ def delete_scenario(scenario_id: str) -> Dict[str, Any]:
             "DELETE FROM scenarios WHERE id = ? AND owner IS ?", (scenario_id, owner),
         )
     return {"deleted": scenario_id}
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Scenario · Causal Effect Estimation (DoWhy) — parity with render_causal_tab.
+# Builds the single-SKU engineered-feature frame the same way the Streamlit tab
+# does (eda._engineer_features() + merged numeric exog), then delegates the math
+# to scenario_engine (verbatim DoWhy logic). Read-only: never alters forecasts.
+# ──────────────────────────────────────────────────────────────────────────────
+def _scenario_causal_features(ds: Dict[str, Any], sku: str):
+    """Return (features_df, outcome, potential_cols, exog_cols) for one SKU,
+    mirroring render_causal_tab's features_df construction (source 15597-15632)."""
+    df = load_dataset_df(ds)
+    df = _apply_history_window(df, ds["date_col"], _resolve_config(ds))
+    date_col, sales_col, sku_col = ds["date_col"], ds["sales_col"], ds["sku_col"]
+    sub = df[df[sku_col].astype(str) == str(sku)].copy()
+    if sub.empty:
+        raise ValueError(f"SKU '{sku}' has no history in this dataset")
+    freq = _map_resample_freq(ds.get("freq"))
+    eda = engine.TimeSeriesEDA(
+        sub[[date_col, sales_col]], date_col=date_col, sales_col=sales_col,
+        resample_freq=freq, country_code="IN",
+    )
+    features_df = eda._engineer_features()
+    features_df.rename(columns={"sales": sales_col}, inplace=True)
+    features_df["date"] = pd.to_datetime(features_df["date"])
+    outcome = sales_col
+
+    # Merge the configured numeric exogenous drivers for this SKU (price/promo/…)
+    # so they are available as treatments AND confounders (source 15608-15619).
+    cfg = _resolve_config(ds)
+    exog_cfg = [c for c in (cfg.get("exogNumeric") or []) if c in sub.columns]
+    if not exog_cfg:
+        exclude = {date_col, sales_col, sku_col}
+        exog_cfg = [
+            c for c in sub.columns
+            if c not in exclude and pd.to_numeric(sub[c], errors="coerce").notna().any()
+        ]
+    exog_added: List[str] = []
+    if exog_cfg:
+        ex = pd.DataFrame({"date": pd.to_datetime(sub[date_col], errors="coerce")})
+        for c in exog_cfg:
+            ex[c] = pd.to_numeric(sub[c], errors="coerce").values
+        ex = (ex.dropna(subset=["date"]).groupby("date").mean()
+              .resample(freq).mean().reset_index())
+        new = [c for c in exog_cfg if c not in features_df.columns]
+        if new:
+            features_df = features_df.merge(ex[["date"] + new], on="date", how="left")
+            features_df[new] = features_df[new].ffill().fillna(0)
+            exog_added = new
+    potential = [c for c in features_df.columns if c not in ["date", outcome]]
+    return features_df, outcome, potential, exog_added
+
+
+def _causal_worker(job_id: str, ds: Dict[str, Any], sku: str,
+                   treatments: List[str], confounders: List[str],
+                   instruments: List[str], effect_modifiers: List[str],
+                   methods: List[str], refuters: List[str], compute_ci: bool) -> None:
+    _job_update(job_id, status="running", progress=15, startedAt=now_iso(),
+                message=f"Building features for {sku}…")
+    try:
+        features_df, outcome, potential, exog_added = _scenario_causal_features(ds, sku)
+        confounders = [c for c in confounders if c in potential and c not in treatments]
+        _job_update(job_id, progress=45, message="Measuring causal impact…")
+        out = scenario_engine.estimate_causal_effects(
+            features_df, outcome, treatments, confounders, instruments,
+            effect_modifiers, methods, refuters, compute_ci)
+        out.update({"sku": sku, "outcome": outcome, "potential": potential,
+                    "exogAccountedFor": exog_added, "generatedAt": now_iso()})
+        _job_update(job_id, status="completed", progress=100, completedAt=now_iso(),
+                    message="Causal estimate ready", result=out)
+    except Exception as exc:
+        logging.exception("causal estimation failed")
+        _job_update(job_id, status="failed", error=str(exc)[:300], completedAt=now_iso())
+
+
+def _drivers_worker(job_id: str, ds: Dict[str, Any], sku: str, use_all_conf: bool) -> None:
+    _job_update(job_id, status="running", progress=15, startedAt=now_iso(),
+                message=f"Ranking levers for {sku}…")
+    try:
+        features_df, outcome, potential, _exog = _scenario_causal_features(ds, sku)
+        _job_update(job_id, progress=45, message="Testing each lever…")
+        ranked = scenario_engine.rank_drivers(features_df, outcome, potential, use_all_conf)
+        _job_update(job_id, status="completed", progress=100, completedAt=now_iso(),
+                    message="Driver ranking ready",
+                    result={"sku": sku, "outcome": outcome, "ranked": ranked,
+                            "generatedAt": now_iso()})
+    except Exception as exc:
+        logging.exception("driver ranking failed")
+        _job_update(job_id, status="failed", error=str(exc)[:300], completedAt=now_iso())
+
+
+@app.get("/scenarios/causal/features")
+def scenario_causal_features(datasetId: Optional[str] = Query(None),
+                             skuId: Optional[str] = Query(None)) -> Dict[str, Any]:
+    """Candidate levers (potential treatments/confounders) for a SKU + DoWhy
+    availability. Mirrors how render_causal_tab derives `potential`."""
+    if not scenario_engine.DOWHY_AVAILABLE:
+        return {"available": False, "columns": [], "outcome": None,
+                "message": "Install `dowhy` and `graphviz` for causal analysis."}
+    ds_id = datasetId or latest_dataset_id()
+    sku = str(skuId or "").strip()
+    if ds_id is None or not sku:
+        return {"available": True, "columns": [], "outcome": None,
+                "exogAccountedFor": [], "message": "Select a forecast level first."}
+    try:
+        ds = dict(load_dataset_row(ds_id))
+        _features, outcome, potential, exog_added = _scenario_causal_features(ds, sku)
+        return {"available": True, "columns": potential, "outcome": outcome,
+                "exogAccountedFor": exog_added, "message": ""}
+    except Exception as exc:
+        logging.warning("scenario_causal_features failed: %s", exc)
+        return {"available": True, "columns": [], "outcome": None,
+                "exogAccountedFor": [], "message": str(exc)[:200]}
+
+
+@app.post("/scenarios/causal/run")
+def run_causal(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    payload = payload or {}
+    if not scenario_engine.DOWHY_AVAILABLE:
+        raise HTTPException(status_code=503,
+                            detail="Causal analysis requires dowhy + graphviz")
+    ds_id = payload.get("datasetId") or latest_dataset_id()
+    if ds_id is None:
+        raise HTTPException(status_code=400, detail="No dataset — upload one first")
+    sku = str(payload.get("skuId") or "").strip()
+    if not sku:
+        raise HTTPException(status_code=422, detail="skuId is required")
+    treatments = [str(t) for t in (payload.get("treatments") or []) if str(t).strip()]
+    if not treatments:
+        raise HTTPException(status_code=422, detail="Select at least one lever (treatment)")
+    confounders = [str(c) for c in (payload.get("confounders") or [])]
+    instruments = [str(c) for c in (payload.get("instruments") or [])]
+    effect_modifiers = [str(c) for c in (payload.get("effectModifiers") or [])]
+    methods = [str(m) for m in (payload.get("methods") or [])] or ["backdoor.linear_regression"]
+    refuters = payload.get("refuters")
+    refuters = ([str(r) for r in refuters] if isinstance(refuters, list)
+                else [mn for mn, _ in scenario_engine.REFUTER_CHOICES])
+    compute_ci = bool(payload.get("computeCi", True))
+    ds = dict(load_dataset_row(ds_id))
+
+    job_id = f"job_{uuid.uuid4().hex[:12]}"
+    job = {"id": job_id, "status": "queued", "progress": 0, "skuIds": [sku],
+           "skuCount": 0, "total": 1, "datasetId": ds_id, "runId": None,
+           "startedAt": now_iso(), "completedAt": None, "error": None,
+           "message": "Queued…", "mode": "causal", "result": None}
+    with _JOBS_LOCK:
+        _JOBS[job_id] = job
+    threading.Thread(
+        target=_causal_worker,
+        args=(job_id, ds, sku, treatments, confounders, instruments,
+              effect_modifiers, methods, refuters, compute_ci),
+        daemon=True,
+    ).start()
+    return dict(job)
+
+
+@app.post("/scenarios/causal/drivers")
+def run_causal_drivers(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    payload = payload or {}
+    if not scenario_engine.DOWHY_AVAILABLE:
+        raise HTTPException(status_code=503,
+                            detail="Causal analysis requires dowhy + graphviz")
+    ds_id = payload.get("datasetId") or latest_dataset_id()
+    if ds_id is None:
+        raise HTTPException(status_code=400, detail="No dataset — upload one first")
+    sku = str(payload.get("skuId") or "").strip()
+    if not sku:
+        raise HTTPException(status_code=422, detail="skuId is required")
+    use_all_conf = bool(payload.get("useAllConfounders", True))
+    ds = dict(load_dataset_row(ds_id))
+    job_id = f"job_{uuid.uuid4().hex[:12]}"
+    job = {"id": job_id, "status": "queued", "progress": 0, "skuIds": [sku],
+           "skuCount": 0, "total": 1, "datasetId": ds_id, "runId": None,
+           "startedAt": now_iso(), "completedAt": None, "error": None,
+           "message": "Queued…", "mode": "drivers", "result": None}
+    with _JOBS_LOCK:
+        _JOBS[job_id] = job
+    threading.Thread(target=_drivers_worker, args=(job_id, ds, sku, use_all_conf),
+                     daemon=True).start()
+    return dict(job)
 
 
 def _resolve_run(run_id: Optional[str], dataset_id: Optional[str]):
@@ -3500,6 +3871,327 @@ _FREQ_PERIOD = {"D": 7, "W": 52, "MS": 12, "QS": 4, "YS": 1}
 # so the React decomposition matches Streamlit exactly. (Distinct from
 # _FREQ_PERIOD, which also drives ACF/PACF nlags and is left unchanged.)
 _DECOMP_PERIOD = {"D": 7, "W": 4, "MS": 12, "QS": 4, "YS": 2}
+
+
+# ── Forecast Explainability (Phase X.U) ──────────────────────────────────────
+# READ-ONLY interpretation layer. It derives a normalized driver breakdown from
+# EXISTING data via statistical decomposition + correlation. It NEVER reruns,
+# retrains, or alters any forecast — it only explains the demand pattern.
+_EXOG_KEYWORDS = [
+    ("promo", "Promotion"), ("scheme", "Promotion"), ("discount", "Discount"),
+    ("price", "Price"), ("holiday", "Holiday"), ("festiv", "Holiday"),
+    ("weather", "Weather"), ("temp", "Weather"), ("rain", "Weather"),
+    ("market", "Marketing"), ("advert", "Marketing"), ("spend", "Marketing"),
+    ("event", "Events"), ("region", "Region"), ("zone", "Region"),
+    ("channel", "Channel"), ("store", "Channel"),
+]
+
+
+def _exog_label(col: str) -> str:
+    lc = str(col).lower()
+    for kw, label in _EXOG_KEYWORDS:
+        if kw in lc:
+            return label
+    return " ".join(w.capitalize() for w in str(col).replace("_", " ").split())
+
+
+def explain_forecast(s: "pd.Series", work: "pd.DataFrame", ds: Dict[str, Any],
+                     freq: str) -> Optional[Dict[str, Any]]:
+    """Derive a normalized contribution breakdown for a demand series.
+
+    Returns {trend, seasonality, holiday, residual, exogenous:{label:pct}} where
+    every value is a percentage and the magnitudes sum to ~100. READ-ONLY: pure
+    decomposition + correlation of already-computed data. Returns None when the
+    series is too short to interpret."""
+    try:
+        s = s.astype(float).dropna()
+    except Exception:
+        return None
+    n = int(len(s))
+    if n < 4:
+        return None
+    demand_std = float(s.std()) or 1.0
+
+    # Trend / seasonality / residual signal magnitudes.
+    try:
+        slope = float(np.polyfit(np.arange(n), s.values, 1)[0])
+    except Exception:
+        slope = 0.0
+    trend_sig = abs(slope) * n
+    try:
+        by_month = s.groupby(s.index.month).mean()
+        season_sig = float(by_month.std()) if len(by_month) > 1 else 0.0
+    except Exception:
+        season_sig = 0.0
+    resid_sig = demand_std * 0.20
+    decomp_period = _DECOMP_PERIOD.get(freq, 4)
+    if decomp_period >= 2 and n >= decomp_period * 2:
+        try:
+            from statsmodels.tsa.seasonal import seasonal_decompose
+            dec = seasonal_decompose(s, model="additive", period=decomp_period)
+            trend_sig = float(np.nanstd(dec.trend.values)) or trend_sig
+            season_sig = float(np.nanstd(dec.seasonal.values)) or season_sig
+            resid_sig = float(np.nanstd(dec.resid.values)) or resid_sig
+        except Exception:
+            pass
+
+    # Exogenous / holiday signals via period-aligned Pearson correlation.
+    holiday_sig = 0.0
+    exog: Dict[str, Dict[str, float]] = {}
+    try:
+        date_col = str(ds["date_col"]); sales_col = str(ds["sales_col"]); sku_col = str(ds["sku_col"])
+        exclude = {date_col, sales_col, sku_col}
+        dts = pd.to_datetime(work[date_col], errors="coerce")
+        for col in [str(c) for c in work.columns]:
+            if col in exclude:
+                continue
+            ser = pd.to_numeric(work[col], errors="coerce")
+            if ser.notna().sum() < max(4, n // 2):
+                continue
+            try:
+                per = (pd.DataFrame({"d": dts, "v": ser}).dropna()
+                       .set_index("d")["v"].resample(freq).mean())
+                pair = pd.concat([s, per.reindex(s.index)], axis=1).dropna()
+                if len(pair) < 4 or float(pair.iloc[:, 1].std()) == 0:
+                    continue
+                r = float(pair.iloc[:, 0].corr(pair.iloc[:, 1]))
+                if not np.isfinite(r):
+                    continue
+                mag = abs(r) * demand_std
+                label = _exog_label(col)
+                if label == "Holiday":
+                    holiday_sig = max(holiday_sig, mag)
+                else:
+                    prev = exog.get(label)
+                    if prev is None or mag > prev["_mag"]:
+                        exog[label] = {"_mag": mag, "r": round(r, 3)}
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    total = trend_sig + season_sig + holiday_sig + resid_sig + sum(v["_mag"] for v in exog.values())
+    total = total or 1.0
+    pct = lambda v: round(100.0 * float(v) / total, 1)
+    exog_out = {
+        label: {"pct": pct(v["_mag"]) * (1 if v["r"] >= 0 else -1), "correlation": v["r"]}
+        for label, v in exog.items()
+    }
+    return {
+        "trend": pct(trend_sig),
+        "seasonality": pct(season_sig),
+        "holiday": pct(holiday_sig),
+        "residual": pct(resid_sig),
+        "exogenous": exog_out,
+        "slopeDirection": "up" if slope > 0 else "down" if slope < 0 else "flat",
+    }
+
+
+def _explain_series_for(ds: Dict[str, Any], freq: str, work: "pd.DataFrame",
+                        sales_col: str, date_col: str) -> Optional[Dict[str, Any]]:
+    """Resample `work` to a clean demand series, then explain it."""
+    try:
+        tmp = (pd.DataFrame({"d": pd.to_datetime(work[date_col], errors="coerce"),
+                             "v": pd.to_numeric(work[sales_col], errors="coerce")})
+               .dropna().set_index("d")["v"].resample(freq).sum())
+        return explain_forecast(tmp, work, ds, freq)
+    except Exception:
+        return None
+
+
+# Phase X.W — Explainability is now exclusively FORECAST-LEVEL. The former
+# `/explainability/global` (portfolio + per-segment aggregate drivers) was removed:
+# users want per-entity answers ("why did Material 1001 increase?"), not portfolio
+# explanations. Only the local + horizon endpoints below remain.
+
+
+@app.get("/explainability/local/{forecast_level}")
+def explainability_local(forecast_level: str,
+                         datasetId: Optional[str] = Query(None)) -> Dict[str, Any]:
+    """Single forecast-level entity: contribution breakdown + a derived waterfall
+    (base demand → signed driver deltas → final forecast)."""
+    ds_id = datasetId or latest_dataset_id()
+    _empty = {"available": False, "entity": forecast_level, "model": "",
+              "contributions": None, "waterfall": []}
+    if ds_id is None:
+        return dict(_empty)
+    try:
+        ds = dict(load_dataset_row(ds_id))
+        df = load_dataset_df(ds)
+        freq = ds["freq"] or "MS"
+        date_col, sales_col, sku_col = str(ds["date_col"]), str(ds["sales_col"]), str(ds["sku_col"])
+        work = df[df[sku_col].astype(str) == str(forecast_level)]
+        if work.empty:
+            return dict(_empty)
+        ex = _explain_series_for(ds, freq, work, sales_col, date_col)
+        if ex is None:
+            return dict(_empty)
+
+        # Base = historical mean/period; final = the stored forecast mean if present.
+        hist = (pd.DataFrame({"d": pd.to_datetime(work[date_col], errors="coerce"),
+                              "v": pd.to_numeric(work[sales_col], errors="coerce")})
+                .dropna().set_index("d")["v"].resample(freq).sum())
+        base = float(hist.mean()) if len(hist) else 0.0
+        final = base
+        model_label = ""
+        try:
+            with get_conn() as conn:
+                row = conn.execute(
+                    "SELECT total_forecast_units, horizon, model, detail_json FROM forecasts "
+                    "WHERE dataset_id = ? AND sku = ? ORDER BY generated_at DESC LIMIT 1",
+                    (ds_id, str(forecast_level)),
+                ).fetchone()
+            if row and row["total_forecast_units"]:
+                hz = 1
+                try:
+                    hz = max(1, int(float(row["horizon"])))
+                except Exception:
+                    hz = 1
+                final = float(row["total_forecast_units"]) / hz
+            if row:
+                try:
+                    det = json.loads(row["detail_json"]) if row["detail_json"] else {}
+                    model_label = str(det.get("strategyLabel") or row["model"] or "")
+                except Exception:
+                    model_label = str(row["model"] or "")
+        except Exception:
+            pass
+
+        # Distribute (final - base) across the signed driver percentages. Drivers are
+        # emitted in a fixed, business-readable order: Trend → Seasonality → exogenous
+        # (Promotion / Price / …) → Holiday → Residual. Positive deltas lift demand,
+        # negatives drag it; the Residual closes the bridge to the stored forecast.
+        ordered: List[tuple] = [
+            ("Trend", ex["trend"] * (1 if ex["slopeDirection"] != "down" else -1)),
+            ("Seasonality", ex["seasonality"]),
+        ]
+        for label, info in sorted(ex["exogenous"].items(), key=lambda kv: -abs(kv[1]["pct"])):
+            ordered.append((label, info["pct"]))
+        ordered.append(("Holiday", ex["holiday"]))
+        ordered.append(("Residual", ex["residual"]))
+        sign_sum = sum(abs(p) for _, p in ordered) or 1.0
+        delta = final - base
+        waterfall = [{"label": "Base demand", "value": round(base, 1), "type": "base"}]
+        for label, p in ordered:
+            if p == 0:
+                continue
+            contrib = round(delta * (p / sign_sum), 1)
+            waterfall.append({"label": label, "value": contrib, "type": "delta"})
+        waterfall.append({"label": "Final forecast", "value": round(final, 1), "type": "total"})
+        return {"available": True, "entity": forecast_level, "model": model_label,
+                "contributions": ex, "waterfall": waterfall}
+    except Exception as exc:
+        logging.warning("explainability_local failed: %s", exc)
+        return {"available": False, "entity": forecast_level, "model": "",
+                "contributions": None, "waterfall": []}
+
+
+@app.get("/explainability/horizon/{forecast_level}")
+def explainability_horizon(forecast_level: str,
+                           datasetId: Optional[str] = Query(None)) -> Dict[str, Any]:
+    """Per-horizon driver breakdown for one entity, derived from the seasonal
+    index + trend over the stored forecast periods (read-only)."""
+    ds_id = datasetId or latest_dataset_id()
+    if ds_id is None:
+        return {"available": False, "entity": forecast_level, "periods": []}
+    try:
+        ds = dict(load_dataset_row(ds_id))
+        df = load_dataset_df(ds)
+        freq = ds["freq"] or "MS"
+        date_col, sales_col, sku_col = str(ds["date_col"]), str(ds["sales_col"]), str(ds["sku_col"])
+        work = df[df[sku_col].astype(str) == str(forecast_level)]
+        if work.empty:
+            return {"available": False, "entity": forecast_level, "periods": []}
+        hist = (pd.DataFrame({"d": pd.to_datetime(work[date_col], errors="coerce"),
+                              "v": pd.to_numeric(work[sales_col], errors="coerce")})
+                .dropna().set_index("d")["v"].resample(freq).sum())
+        if len(hist) < 4:
+            return {"available": False, "entity": forecast_level, "periods": []}
+
+        overall = float(hist.mean())
+        by_month = hist.groupby(hist.index.month).mean()
+        try:
+            slope = float(np.polyfit(np.arange(len(hist)), hist.values, 1)[0])
+        except Exception:
+            slope = 0.0
+
+        # Derive the entity's exogenous + residual shares once (read-only) so each
+        # horizon period carries Exogenous and Residual alongside Trend / Seasonality.
+        ex = _explain_series_for(ds, freq, work, sales_col, date_col)
+        exog_total_pct = 0.0
+        residual_pct = 0.0
+        holiday_pct = 0.0
+        exog_items: List[tuple] = []
+        if ex:
+            exog_total_pct = sum(abs(v.get("pct", 0.0)) for v in ex.get("exogenous", {}).values())
+            residual_pct = float(ex.get("residual", 0.0))
+            holiday_pct = float(ex.get("holiday", 0.0))
+            exog_items = list(ex.get("exogenous", {}).items())  # [(label, {pct,...})]
+        exog_abs = round(overall * exog_total_pct / 100.0, 1)
+        residual_abs = round(overall * residual_pct / 100.0, 1)
+        holiday_abs = round(overall * holiday_pct / 100.0, 1)
+
+        # Stored forecast dates for this entity (else synthesize the next periods).
+        fc_dates: List[pd.Timestamp] = []
+        try:
+            with get_conn() as conn:
+                row = conn.execute(
+                    "SELECT detail_json FROM forecasts WHERE dataset_id = ? AND sku = ? "
+                    "ORDER BY generated_at DESC LIMIT 1", (ds_id, str(forecast_level))).fetchone()
+            if row and row["detail_json"]:
+                det = json.loads(row["detail_json"])
+                for p in det.get("series", []):
+                    if p.get("forecast") is not None and p.get("date"):
+                        fc_dates.append(pd.to_datetime(p["date"]))
+        except Exception:
+            pass
+        if not fc_dates:
+            last = hist.index[-1]
+            fc_dates = list(pd.date_range(last, periods=7, freq=freq))[1:]
+
+        month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        periods: List[Dict[str, Any]] = []
+        for i, dt in enumerate(fc_dates[:24]):
+            m = int(dt.month)
+            seasonal = float(by_month.get(m, overall)) - overall
+            trend = slope * (len(hist) + i)
+            # Per-period driver share: each component's magnitude as a % of the
+            # total moving parts for that period. Exogenous + Residual are the
+            # entity-level shares applied as a flat lift, consistent across horizons.
+            denom = abs(trend) + abs(seasonal) + abs(exog_abs) + abs(residual_abs)
+            denom = denom or 1.0
+            # Phase X.X · Task 6 — per-driver ABSOLUTE contributions for this month
+            # (signed, demand units) so the monthly Forecast Bridge can decompose
+            # into Trend / Seasonality / Holiday / Promotion / Price / Weather /
+            # Residual. Same derived shares as the aggregate — just split per label.
+            drivers: Dict[str, float] = {
+                "Trend": round(trend, 1),
+                "Seasonality": round(seasonal, 1),
+            }
+            if holiday_abs:
+                drivers["Holiday"] = holiday_abs
+            for _label, _info in exog_items:
+                drivers[_label] = round(overall * float(_info.get("pct", 0.0)) / 100.0, 1)
+            drivers["Residual"] = residual_abs
+            periods.append({
+                "label": f"{month_names[m - 1]} {int(dt.year)}",
+                "index": f"M+{i + 1}",
+                "base": round(overall, 1),
+                "trend": round(trend, 1),
+                "seasonality": round(seasonal, 1),
+                "exogenous": exog_abs,
+                "residual": residual_abs,
+                "trendPct": round(100.0 * abs(trend) / denom, 1),
+                "seasonalityPct": round(100.0 * abs(seasonal) / denom, 1),
+                "exogenousPct": round(100.0 * abs(exog_abs) / denom, 1),
+                "residualPct": round(100.0 * abs(residual_abs) / denom, 1),
+                "drivers": drivers,
+            })
+        return {"available": True, "entity": forecast_level, "periods": periods}
+    except Exception as exc:
+        logging.warning("explainability_horizon failed: %s", exc)
+        return {"available": False, "entity": forecast_level, "periods": []}
 
 
 @app.get("/eda")
