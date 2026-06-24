@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import {
+  Boxes,
   CalendarRange,
   ChevronDown,
   Gauge,
-  IndianRupee,
   LineChart,
   Loader2,
   Play,
@@ -25,7 +25,7 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { ErrorState } from "@/components/feedback/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { formatDate, formatFrequency, formatIndianCurrency, formatNumber } from "@/lib/utils/format";
+import { formatDate, formatFrequency, formatNumber } from "@/lib/utils/format";
 import { isWeekendDate } from "@/lib/utils/holidays";
 import { routes } from "@/lib/constants/routes";
 import { workflowService } from "@/lib/api/services";
@@ -361,11 +361,11 @@ function EdaSections({ eda }: { eda: EdaResult }) {
         {/* Part 10 — Missing Values & Outliers KPI cards removed. */}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
           <QualityTile icon={Rows3} label="Total Records" value={formatNumber(dq.totalRecords)} />
-          {dq.totalRevenue != null ? (
-            <QualityTile icon={IndianRupee} label="Total Revenue" value={formatIndianCurrency(dq.totalRevenue)} />
-          ) : (
-            <QualityTile icon={IndianRupee} label="Total Sales (Units)" value={formatNumber(Math.round(dq.totalSalesUnits ?? 0))} />
-          )}
+          {/* Phase Y.1 · Task 4 — Total Sales (Units): SUM of the mapped demand
+              column across the entire uploaded dataset (backend `totalSalesUnits`),
+              recomputed on every upload / column remap. Neutral units icon — this
+              is a unit count, never a currency value, so no rupee / currency style. */}
+          <QualityTile icon={Boxes} label="Total Sales (Units)" value={formatNumber(Math.round(dq.totalSalesUnits ?? 0))} />
           <QualityTile icon={CalendarRange} label="Min Date" value={dq.minDate ? formatDate(dq.minDate) : "—"} />
           <QualityTile icon={CalendarRange} label="Max Date" value={dq.maxDate ? formatDate(dq.maxDate) : "—"} />
           <QualityTile icon={Gauge} label="Frequency" value={formatFrequency(dq.frequency)} />
@@ -423,13 +423,13 @@ function EdaSections({ eda }: { eda: EdaResult }) {
         </Card>
       </section>
 
-      {/* Exogenous Correlation Heatmap (Phase X.T · Task 4) */}
+      {/* Exogenous Correlation Heatmap (Phase Y.2 · Task 1) — full pairwise matrix */}
       <section className="space-y-3">
         <SectionHeading>Exogenous Correlation</SectionHeading>
         <Card>
           <CardContent className="space-y-2 pt-6">
             <p className="text-sm text-muted-foreground">
-              Pearson correlation of demand against each numeric exogenous driver.
+              Pairwise Pearson correlation across every numeric exogenous driver (red = negative, blue = positive).
             </p>
             <EdaCorrelationHeatmap datasetId={eda.datasetId} />
           </CardContent>

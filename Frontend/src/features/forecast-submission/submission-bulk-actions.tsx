@@ -11,6 +11,12 @@ import type { SubmissionBulk } from "@/types/submission";
 /**
  * Bulk actions on the current filter — apply % changes, copy LY same month,
  * reset to model, and bulk-set reason. Each maps to a single PATCH {bulk, filter}.
+ *
+ * Phase Y.3 · Task 1 — an override REASON is mandatory before any value-changing
+ * override (% change, Copy LY overwrite, or bulk-set reason) can be applied. The
+ * reason selector starts unset; until a reason is chosen those Apply buttons are
+ * disabled and a validation message is shown, and the chosen reason is recorded
+ * on every affected row. "Reset to model" clears an override, so it needs none.
  */
 export function SubmissionBulkActions({
   reasonOptions,
@@ -24,7 +30,12 @@ export function SubmissionBulkActions({
   onApply: (bulk: SubmissionBulk) => void;
 }) {
   const [uplift, setUplift] = useState("5");
-  const [reason, setReason] = useState(reasonOptions[0] ?? "");
+  // Empty = no reason chosen yet (the placeholder). reasonOptions[0] is the
+  // backend "(no override)" sentinel, which we drop from the choices so picking
+  // any real reason is an explicit, recorded decision.
+  const [reason, setReason] = useState("");
+  const reasonChoices = reasonOptions.filter((_, i) => i !== 0);
+  const reasonValid = reason.trim() !== "";
 
   return (
     <Card className="p-5">
@@ -37,7 +48,25 @@ export function SubmissionBulkActions({
         </span>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Mandatory override reason — gates every value-changing override below. */}
+      <Field label="Override reason (required)">
+        <Select
+          value={reason}
+          onChange={setReason}
+          options={[
+            { value: "", label: "Select an override reason…" },
+            ...reasonChoices.map((r) => ({ value: r, label: r })),
+          ]}
+          ariaLabel="Override reason"
+        />
+        {!reasonValid ? (
+          <p className="mt-1 text-xs font-medium text-destructive">
+            Please select or enter an override reason.
+          </p>
+        ) : null}
+      </Field>
+
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Field label="Apply % Changes">
           <div className="flex items-center gap-2">
             <Input
@@ -51,9 +80,10 @@ export function SubmissionBulkActions({
             <Button
               variant="outline"
               size="sm"
-              disabled={disabled}
+              disabled={disabled || !reasonValid}
+              title={!reasonValid ? "Please select or enter an override reason." : undefined}
               onClick={() =>
-                onApply({ op: "uplift", value: Number(uplift) || 0 })
+                onApply({ op: "uplift", value: Number(uplift) || 0, reason })
               }
             >
               <Plus className="size-4" /> Apply
@@ -65,8 +95,9 @@ export function SubmissionBulkActions({
           <Button
             variant="outline"
             size="sm"
-            disabled={disabled}
-            onClick={() => onApply({ op: "copy_ly" })}
+            disabled={disabled || !reasonValid}
+            title={!reasonValid ? "Please select or enter an override reason." : undefined}
+            onClick={() => onApply({ op: "copy_ly", reason })}
           >
             <Calendar className="size-4" /> Copy LY →
           </Button>
@@ -83,23 +114,16 @@ export function SubmissionBulkActions({
           </Button>
         </Field>
 
-        <Field label="Bulk-set reason">
-          <div className="flex items-center gap-2">
-            <Select
-              value={reason}
-              onChange={setReason}
-              options={reasonOptions.map((r) => ({ value: r, label: r }))}
-              ariaLabel="Bulk reason"
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={disabled}
-              onClick={() => onApply({ op: "reason", reason })}
-            >
-              <Tag className="size-4" /> Apply
-            </Button>
-          </div>
+        <Field label="Set reason only">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={disabled || !reasonValid}
+            title={!reasonValid ? "Please select or enter an override reason." : undefined}
+            onClick={() => onApply({ op: "reason", reason })}
+          >
+            <Tag className="size-4" /> Apply
+          </Button>
         </Field>
       </div>
     </Card>

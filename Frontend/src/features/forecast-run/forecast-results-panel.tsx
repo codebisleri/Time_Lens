@@ -21,7 +21,6 @@ import { Select } from "@/features/data/controls";
 import type { ForecastBandPoint } from "@/features/forecast/hooks/use-forecast-trend";
 import type { ForecastDetail, ForecastMetricRow, ForecastRunMetrics } from "@/types/forecast";
 import { ContinueButton } from "@/features/workflow/continue-button";
-import { ReconciliationSection } from "./reconciliation-section";
 import { TopDownBadge } from "./top-down-indicator";
 import { ForecastExplainPanel } from "@/features/forecast-explain/forecast-explain-panel";
 import { useForecastStore } from "@/lib/stores";
@@ -270,7 +269,9 @@ function Kpi({ label, value, hint }: { label: string; value: string; hint?: stri
 const EXPORTS = [
   { kind: "forecasts", label: "Forecasts", needsReconcile: false },
   { kind: "all-models", label: "All-models comparison", needsReconcile: false },
-  { kind: "reconciliation", label: "Brand reconciliation", needsReconcile: true },
+  // Phase Y.2 · Task 4 — "Brand reconciliation" CSV export removed with the
+  // brand-level reconciliation chart. The reconciled forecast output export below
+  // remains (it is forecast generation, not the removed visualization).
   { kind: "sku-adjusted", label: "Reconciled forecasts", needsReconcile: true },
 ];
 
@@ -353,8 +354,6 @@ function Drilldown({ row }: { row: ForecastMetricRow }) {
                   <th className="px-3 py-2 font-medium">Algorithm</th>
                   <th className="px-3 py-2 font-medium">Role</th>
                   <th className="px-3 py-2 text-right font-medium">Test WMAPE</th>
-                  <th className="px-3 py-2 text-right font-medium">CV WMAPE</th>
-                  <th className="px-3 py-2 text-right font-medium">Forecast total</th>
                   <th className="px-3 py-2 font-medium">Notes</th>
                 </tr>
               </thead>
@@ -385,8 +384,6 @@ function Drilldown({ row }: { row: ForecastMetricRow }) {
                       {m.isChampion ? "Champion" : "Candidate"}
                     </td>
                     <td className={cn("px-3 py-1.5 text-right tabular-nums", m.isChampion && "font-semibold")}>{pct(m.testWmape)}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{pct(m.cvWmape)}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{m.forecastTotal != null ? formatNumber(m.forecastTotal, { maximumFractionDigits: 0 }) : "—"}</td>
                     <td className="px-3 py-1.5 text-muted-foreground">{m.reason || "—"}</td>
                   </tr>
                 ))}
@@ -545,7 +542,6 @@ export function ForecastResultsPanel({
                     <th className="px-3 py-2 text-right font-medium">Train WMAPE</th>
                     <th className="px-3 py-2 text-right font-medium">Test WMAPE</th>
                     <th className="px-3 py-2 font-medium">Band</th>
-                    <th className="px-3 py-2 text-right font-medium">Forecast total</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -558,7 +554,6 @@ export function ForecastResultsPanel({
                       <td className="px-3 py-1.5 text-right tabular-nums">{pct(r.trainWmape)}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums">{pct(r.testWmape)}</td>
                       <td className="px-3 py-1.5"><Badge variant={BAND_VARIANT[r.band]}>{r.band}</Badge></td>
-                      <td className="px-3 py-1.5 text-right tabular-nums">{r.forecastTotal != null ? formatNumber(r.forecastTotal, { maximumFractionDigits: 0 }) : "—"}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -608,15 +603,11 @@ export function ForecastResultsPanel({
       {/* Forecast interpretation — portfolio-level read of the run (data-driven). */}
       <ForecastInterpretation metrics={metrics} levels={levels} />
 
-      {/* Brand-Level Reconciliation + reconciled charts — only for reconciled runs. */}
-      {metrics.reconciled ? (
-        <section className="space-y-2">
-          <h3 className="flex items-center gap-2 text-base font-semibold">
-            <Layers className="size-4 text-primary" /> Brand-level reconciliation
-          </h3>
-          <ReconciliationSection datasetId={datasetId} runId={metrics.runId} />
-        </section>
-      ) : null}
+      {/* Phase Y.2 · Task 4 — the Brand-level reconciliation chart/section was
+          removed (chart, brand selector, legend, table, CSV button). The
+          top-down / bottom-up / reconciliation CALCULATIONS are untouched in the
+          backend and reconciled forecast generation still runs; only this
+          visualization is gone. */}
 
       {/* Exports */}
       <Card>
@@ -648,19 +639,18 @@ export function ForecastResultsPanel({
         </CardContent>
       </Card>
 
-      {/* Forward navigation — the completed forecast unlocks the Forecast
-          Submission stage (workflow forecastCompleted=true). This is the same
-          "Continue to X" pattern every other workflow step uses; Submission
-          stays a dedicated page (not embedded). */}
+      {/* Forward navigation — Phase Y.3 · Task 4: the completed forecast now
+          unlocks the Performance stage (Step 5), which precedes Forecast
+          Submission. Same "Continue to X" pattern every other workflow step uses. */}
       <Card>
         <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
           <p className="text-sm text-muted-foreground">
-            Forecast complete — the Forecast Submission stage is now unlocked.
+            Forecast complete — the Performance stage is now unlocked.
           </p>
           <ContinueButton
-            href={routes.forecastSubmission}
-            label="Continue to Forecast Submission"
-            loadingLabel="Loading Submission…"
+            href={routes.performance}
+            label="Continue to Performance"
+            loadingLabel="Loading Performance…"
           />
         </CardContent>
       </Card>

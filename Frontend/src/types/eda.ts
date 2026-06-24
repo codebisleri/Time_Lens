@@ -4,6 +4,17 @@ export interface EdaSeriesPoint {
   value: number | null;
 }
 
+/** Pairwise exogenous-driver correlation matrix (backend `/eda/correlation`).
+ *  `matrix[i][j]` is the Pearson correlation of `columns[i]` vs `columns[j]`
+ *  (null when undefined). Drivers include uploaded numeric exog + engineered
+ *  features (lag/rolling/seasonal/holiday). */
+export interface EdaCorrelationResult {
+  available: boolean;
+  columns: string[];
+  matrix: (number | null)[][];
+  outcome: string | null;
+}
+
 export interface EdaDataQuality {
   totalRecords: number;
   nPeriods: number;

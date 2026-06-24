@@ -5,14 +5,16 @@ import { PageShell } from "@/components/layout/page-shell";
 import { routes } from "@/lib/constants/routes";
 import { WorkflowHero, HeroStatusPill } from "@/features/workflow/workflow-hero";
 import { WorkflowLock } from "@/features/workflow/workflow-lock";
+import { ContinueButton } from "@/features/workflow/continue-button";
 import { useWorkflowStatus } from "@/features/workflow/use-workflow-status";
 import { SubmissionWorksheet } from "./submission-worksheet";
 
 /**
- * Forecast Submission — the planner worksheet (Step 5). Mirrors Streamlit's
- * render_submission_tab: cascading filters, KPI strip, bulk actions, an editable
- * month-level grid, submit + CSV + audit trail. The worksheet content lives in
- * SubmissionWorksheet so it can ALSO render inline in the post-forecast workflow.
+ * Forecast Submission — the planner worksheet (Step 6, after Performance).
+ * Mirrors Streamlit's render_submission_tab: cascading filters, KPI strip, bulk
+ * actions, an editable month-level grid, submit + CSV + audit trail. The
+ * worksheet content lives in SubmissionWorksheet so it can ALSO render inline in
+ * the post-forecast workflow.
  */
 export function ForecastSubmissionView() {
   const workflow = useWorkflowStatus();
@@ -23,7 +25,7 @@ export function ForecastSubmissionView() {
     return (
       <PageShell
         title="Forecast Submission"
-        description="Step 5 — review, adjust, and submit the final forecast plan."
+        description="Step 6 — review, adjust, and submit the final forecast plan."
       >
         <WorkflowLock
           title="No forecast to submit"
@@ -41,7 +43,7 @@ export function ForecastSubmissionView() {
       description="Review · adjust · submit — edit any forecast month, log the business reason, and lock in the final plan."
     >
       <WorkflowHero
-        step="Step 5 · Forecast Submission"
+        step="Step 6 · Forecast Submission"
         title="Demand Plan Review & Sign-off"
         subtitle="Adjust any forecast month, log the business rationale, and lock in the consensus plan."
         icon={ClipboardCheck}
@@ -54,6 +56,15 @@ export function ForecastSubmissionView() {
         }
       />
       <SubmissionWorksheet />
+
+      {/* Phase Y.3 · Task 4 — forward navigation to the next step (Scenarios). */}
+      <div className="flex justify-end">
+        <ContinueButton
+          href={routes.scenarios}
+          label="Continue to Scenarios"
+          loadingLabel="Loading Scenarios…"
+        />
+      </div>
     </PageShell>
   );
 }

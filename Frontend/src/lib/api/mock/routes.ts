@@ -110,9 +110,47 @@ function notFound(entity: string): never {
   throw new ApiError({ status: 404, code: "NOT_FOUND", message: `${entity} not found` });
 }
 
+// A throwaway session token + user for MOCK MODE only. No password is checked
+// and no real credential exists — this just lets the app issue a session so the
+// UI is reachable when running on fixtures without a backend.
+const MOCK_TOKEN = "mock-session-token";
+
+function mockUser(email?: string, name?: string) {
+  const mail = (email && email.trim()) || "user@timelens.app";
+  return {
+    id: "user_mock",
+    email: mail,
+    name: (name && name.trim()) || "Time Lens User",
+    role: "planner" as const,
+    organization: "Time Lens",
+    createdAt: "2026-01-01T00:00:00.000Z",
+  };
+}
+
 export const mockRoutes: MockRoute[] = [
-  // Auth is served exclusively by the live backend (real bcrypt/HMAC); there is
-  // no mock auth route, mock user, or demo credential in this codebase.
+  // ── Auth (MOCK MODE only) ───────────────────────────────────────────────────
+  // When NEXT_PUBLIC_USE_MOCKS=true there is no backend, so the auth endpoints
+  // are stubbed here: login/register return a mock token + user (which sets the
+  // session cookie so the app becomes reachable), and /auth/me rehydrates it.
+  // Production / desktop builds run with mocks OFF and hit the REAL FastAPI auth
+  // (bcrypt/HMAC) — these handlers are never reached there, so security is
+  // unchanged. logout is a client-side token clear (no endpoint call).
+  route("POST", "/auth/login", (spec) => {
+    const body = (spec.data ?? {}) as { email?: string };
+    return { token: MOCK_TOKEN, user: mockUser(body.email) };
+  }),
+  route("POST", "/auth/register", (spec) => {
+    const body = (spec.data ?? {}) as { email?: string; name?: string };
+    return { token: MOCK_TOKEN, user: mockUser(body.email, body.name) };
+  }),
+  route("GET", "/auth/me", () => mockUser()),
+
+  // ── Workspace (MOCK MODE only) ──────────────────────────────────────────────
+  // "Start Fresh" / Reset Workspace. With mocks ON there is no backend to purge,
+  // so this just acknowledges the reset — the client clears its own Zustand stores
+  // + persisted localStorage in resetWorkspace(). Production / desktop builds run
+  // with mocks OFF and hit the REAL backend purge (per-user datasets + workflow).
+  route("POST", "/workspace/reset", () => ({ ok: true, datasetsRemoved: 0 })),
 
   // ── Dashboard ─────────────────────────────────────────────────────────────
   route("GET", "/dashboard/summary", () => mockDashboard),

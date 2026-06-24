@@ -47,23 +47,26 @@ function Tile({
 function pct(v: number | null): string {
   return v == null || !Number.isFinite(v) ? "—" : `${v.toFixed(1)}%`;
 }
-function signedPct(v: number | null): string {
-  return v == null || !Number.isFinite(v) ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
-}
 
 /**
- * Headline accuracy strip — pooled WMAPE (traffic-light) · SMAPE · bias ·
- * backtest coverage. Mirrors the Streamlit Performance KPI strip.
+ * Headline accuracy strip — pooled WMAPE (traffic-light) plus the WMAPE quality
+ * distribution. Phase Y.3 · Task 3 — the SMAPE / Bias / Backtest-coverage cards
+ * were replaced by three forecast-level COUNT cards bucketed by test WMAPE:
+ * Excellent (< 20%), Moderate (20–50%), Poor (> 50%). Counts are derived from
+ * each forecast-level's testWmape, so they refresh on every run / new dataset /
+ * rerun. Pure visualization — no metric is recomputed.
  */
 export function PerformanceKpiStrip({ data }: { data: ForecastRunMetrics }) {
   const { plural: levelPlural } = useForecastLevel();
-  // Pooled overall metrics from the server (Streamlit _aggregate_metrics parity):
-  // Σ|resid|/Σactual, pooled SMAPE, pooled bias — NOT averages of per-SKU values.
-  const o = data.groups.overall;
-  const wmape = o.weightedWmape;
-  const total = data.skus.length;
+  const wmape = data.groups.overall.weightedWmape;
 
-  // Streamlit's headline strip: Weighted WMAPE · SMAPE · Bias · Coverage.
+  // WMAPE distribution over forecast-levels (testWmape is already a percentage,
+  // e.g. 14.0 = 14%). Levels with no test metric are excluded from the buckets.
+  const scored = data.skus.filter((s) => s.testWmape != null && Number.isFinite(s.testWmape));
+  const excellent = scored.filter((s) => (s.testWmape as number) < 20).length;
+  const moderate = scored.filter((s) => (s.testWmape as number) >= 20 && (s.testWmape as number) <= 50).length;
+  const poor = scored.filter((s) => (s.testWmape as number) > 50).length;
+
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
       <Tile
@@ -72,16 +75,23 @@ export function PerformanceKpiStrip({ data }: { data: ForecastRunMetrics }) {
         tone={wmapeTone(wmape)}
         meta="Pooled · lower is better"
       />
-      <Tile label="SMAPE" value={pct(o.smape)} meta="Pooled symmetric error" />
       <Tile
-        label="Bias"
-        value={signedPct(o.weightedBias)}
-        meta="Pooled · + over / − under"
+        label="WMAPE < 20%"
+        value={formatNumber(excellent)}
+        tone="success"
+        meta={`Excellent · ${levelPlural}`}
       />
       <Tile
-        label="Backtest coverage"
-        value={pct(o.coveragePct)}
-        meta={`${formatNumber(o.skuCount)} of ${formatNumber(total)} ${levelPlural} evaluated`}
+        label="WMAPE 20–50%"
+        value={formatNumber(moderate)}
+        tone="warning"
+        meta={`Moderate · ${levelPlural}`}
+      />
+      <Tile
+        label="WMAPE > 50%"
+        value={formatNumber(poor)}
+        tone="destructive"
+        meta={`Poor · ${levelPlural}`}
       />
     </div>
   );

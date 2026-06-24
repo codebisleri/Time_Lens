@@ -212,7 +212,9 @@ export function OverviewView() {
       <Card>
         <CardContent className="space-y-3 pt-6">
           <h2 className="text-base font-semibold tracking-tight text-foreground">What is Time Lens?</h2>
-          <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
+          {/* Phase Y.1 · Task 3 — full-width description (the max-w cap left the
+              right half of the card empty); responsive within the page container. */}
+          <p className="w-full text-sm leading-relaxed text-muted-foreground">
             Time Lens is an enterprise demand forecasting and planning platform. It
             ingests your sales history, profiles every item&apos;s demand pattern, routes
             each to its best-fit model, runs a multi-model competition with accuracy

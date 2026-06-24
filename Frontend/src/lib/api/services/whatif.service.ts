@@ -3,6 +3,8 @@ import { endpoints } from "../endpoints";
 import type { ForecastJob } from "@/types/forecast";
 import type {
   CausalFeaturesResponse,
+  CausalGraphPayload,
+  CausalGraphResponse,
   RunCausalPayload,
   RunScenarioPayload,
   SavedScenarioRow,
@@ -51,5 +53,10 @@ export const whatifService = {
   /** Rank every lever by impact — returns a job to poll (result = DriversResult). */
   causalDrivers(payload: { skuId: string; useAllConfounders?: boolean; datasetId?: string }): Promise<ForecastJob> {
     return http.post<ForecastJob>(endpoints.scenarios.causalDrivers(), payload);
+  },
+  /** Read-only causal DAG ({nodes, edges}) for the current selection. No DoWhy
+   *  estimation runs — pure structure for the visualization (Phase Y.6). */
+  causalGraph(payload: CausalGraphPayload): Promise<CausalGraphResponse> {
+    return http.post<CausalGraphResponse>(endpoints.scenarios.causalGraph(), payload);
   },
 };

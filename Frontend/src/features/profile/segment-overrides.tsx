@@ -6,8 +6,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { formatNumber } from "@/lib/utils/format";
-import { FEATURE_LABELS, modelName, visibleSegments } from "@/lib/utils/routing-summary";
+import { modelName, visibleSegments } from "@/lib/utils/routing-summary";
 import { Select } from "@/features/data/controls";
+import { SearchableMultiSelect } from "@/components/common/searchable-multi-select";
 import { useForecastStore } from "@/lib/stores/forecast-store";
 import type { ForecastAlgorithms } from "@/types/forecast";
 import type { SegmentSummary } from "@/types/segmentation";
@@ -26,9 +27,10 @@ const PRIORITY_VARIANT: Record<string, "destructive" | "warning" | "success" | "
 };
 
 /**
- * Per-Segment Models (Phase X.X.2) — one COMPACT card per active segment:
- *   title · SKU count · severity badge · description · Primary Model (editable) ·
- *   Secondary Models (editable, removable chips) · feature tags.
+ * Per-Segment Models (Phase Y.12) — one card per active segment: title · SKU
+ * count · severity badge · description · Primary Model (single-select) · Secondary
+ * Models (searchable multi-select dropdown). Feature tags were removed for a
+ * cleaner config surface.
  *
  * Selections persist in the forecast store (segmentOverrides). Secondary models
  * become ADDITIONAL candidates in the next run's WMAPE competition — the primary
@@ -46,7 +48,7 @@ export function SegmentOverrides({
 }) {
   const overrides = useForecastStore((s) => s.segmentOverrides);
   const setPrimary = useForecastStore((s) => s.setSegmentPrimary);
-  const toggleExtra = useForecastStore((s) => s.toggleSegmentExtra);
+  const setExtras = useForecastStore((s) => s.setSegmentExtras);
   const reset = useForecastStore((s) => s.resetSegmentOverrides);
 
   const rows = visibleSegments(segments);
@@ -92,23 +94,21 @@ export function SegmentOverrides({
         ) : null}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {rows.map((seg) => {
           const ov = overrides[seg.segment];
           const color = seg.color ?? "#64748b";
           const primaryValue = ov?.primary ?? AUTO;
           const effectivePrimary = ov?.primary ?? seg.architecture.primaryKey;
           const extras = ov?.extras ?? [];
-          // Secondary choices exclude whatever is currently primary.
-          const secondaryChoices = choices.filter((c) => c.key !== effectivePrimary);
-          const features: string[] = [
-            ...seg.architecture.features.map((f) => FEATURE_LABELS[f] ?? f),
-            ...(seg.architecture.residualBooster ? [`${seg.architecture.residualBooster.toUpperCase()} residual`] : []),
-          ];
+          // Secondary options exclude whatever is currently primary.
+          const secondaryOptions = choices
+            .filter((c) => c.key !== effectivePrimary)
+            .map((c) => ({ value: c.key, label: labelOf(c.key) }));
 
           return (
-            <Card key={seg.segment} className="p-0" style={{ borderLeft: `4px solid ${color}` }}>
-              <CardContent className="space-y-2.5 p-3.5">
+            <Card key={seg.segment} className="min-h-[200px] p-0" style={{ borderLeft: `4px solid ${color}` }}>
+              <CardContent className="space-y-3 p-4">
                 {/* Title + count + badge */}
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -127,9 +127,9 @@ export function SegmentOverrides({
                   <p className="text-xs leading-snug text-muted-foreground">{seg.strategy}</p>
                 ) : null}
 
-                {/* Primary model (editable, compact) */}
-                <div>
-                  <p className="mb-0.5 text-[0.68rem] font-medium uppercase tracking-wide text-muted-foreground">
+                {/* Primary model — single-select (unchanged behavior). */}
+                <div className="space-y-1">
+                  <p className="text-[0.68rem] font-medium uppercase tracking-wide text-muted-foreground">
                     Primary Model
                   </p>
                   <Select
@@ -140,42 +140,19 @@ export function SegmentOverrides({
                   />
                 </div>
 
-                {/* Secondary models (editable, removable chips) */}
-                <div>
-                  <p className="mb-1 text-[0.68rem] font-medium uppercase tracking-wide text-muted-foreground">
+                {/* Secondary models — searchable multi-select dropdown (Phase Y.12). */}
+                <div className="space-y-1">
+                  <p className="text-[0.68rem] font-medium uppercase tracking-wide text-muted-foreground">
                     Secondary Models
                   </p>
-                  <div className="flex flex-wrap gap-1">
-                    {secondaryChoices.map((c) => {
-                      const on = extras.includes(c.key);
-                      return (
-                        <button
-                          key={c.key}
-                          type="button"
-                          onClick={() => toggleExtra(seg.segment, c.key)}
-                          className={
-                            "rounded-full border px-2 py-0.5 text-[0.7rem] transition-colors " +
-                            (on
-                              ? "border-primary bg-primary/15 text-primary"
-                              : "border-border text-muted-foreground hover:bg-secondary/50")
-                          }
-                        >
-                          {labelOf(c.key)}
-                          {on ? " ✕" : ""}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <SearchableMultiSelect
+                    ariaLabel={`Secondary models for ${seg.segment}`}
+                    placeholder="Add secondary models…"
+                    options={secondaryOptions}
+                    value={extras}
+                    onChange={(next) => setExtras(seg.segment, next)}
+                  />
                 </div>
-
-                {/* Feature tags (unchanged) */}
-                {features.length ? (
-                  <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 border-t border-border/60 pt-2 text-[0.68rem] text-muted-foreground">
-                    {features.map((f) => (
-                      <span key={f}>{f}</span>
-                    ))}
-                  </div>
-                ) : null}
               </CardContent>
             </Card>
           );

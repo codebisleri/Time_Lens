@@ -68,8 +68,20 @@ bcrypt==4.2.1                # password hashing for /auth endpoints
 # Optional Advanced Features
 
 # tsfresh==0.21.1
-# dowhy
 # dtaidistance
 # fpdf2
-# graphviz
 # electron
+
+# ── Scenario → Causal Effect Estimation (DoWhy) — Phase Y.17 ─────────────────
+# graphviz is safe to install normally. dowhy + causal-learn, however, pull a
+# numpy-2 toolchain that BREAKS the pinned numpy==1.24.3 forecast stack (pmdarima
+# fails with a binary-incompatibility error). Install them WITHOUT dependencies so
+# numpy stays at 1.24.3, and pin networkx==3.1 (dowhy 0.11 needs nx.d_separated,
+# which networkx>=3.5 removed). These run fine against the existing stack:
+#     pip install graphviz
+#     pip install networkx==3.1 --no-deps
+#     pip install "dowhy==0.11.1" --no-deps
+#     pip install "causal-learn==0.1.3.8" --no-deps
+# When absent, the Causal tab still shows the structure graph + selectors and the
+# UI reports "Causal estimation unavailable …" (no crash).
+graphviz

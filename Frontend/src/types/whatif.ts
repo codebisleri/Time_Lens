@@ -22,6 +22,13 @@ export interface ScenarioSeriesPoint {
   scenario?: number | null;
 }
 
+/** One bar of the scenario waterfall: Baseline → per-driver deltas → Scenario. */
+export interface ScenarioWaterfallStep {
+  label: string;
+  value: number;
+  type: "base" | "delta" | "total";
+}
+
 export interface ScenarioRunResult {
   sku: string;
   championModel: string;
@@ -36,6 +43,8 @@ export interface ScenarioRunResult {
   deltaUnits: number | null;
   changePct: number | null;
   series: ScenarioSeriesPoint[];
+  /** Baseline → per-driver contribution → Scenario (Phase Y.15). */
+  waterfall?: ScenarioWaterfallStep[];
   generatedAt: ISODateString;
 }
 
@@ -121,6 +130,49 @@ export interface RunCausalPayload {
   refuters?: string[];
   computeCi?: boolean;
   datasetId?: ID;
+}
+
+// ── Read-only causal DAG (Phase Y.6) — structure only; no DoWhy estimation. ───
+export type CausalNodeRole =
+  | "treatment"
+  | "outcome"
+  | "confounder"
+  | "instrument"
+  | "effect_modifier";
+
+export interface CausalGraphNode {
+  id: string;
+  label: string;
+  role: CausalNodeRole;
+}
+
+export interface CausalGraphEdge {
+  source: string;
+  target: string;
+}
+
+export interface CausalGraphPayload {
+  skuId?: string;
+  treatments: string[];
+  confounders?: string[];
+  instruments?: string[];
+  effectModifiers?: string[];
+  datasetId?: ID;
+}
+
+export interface CausalGraphResponse {
+  available: boolean;
+  outcome: string | null;
+  nodes: CausalGraphNode[];
+  edges: CausalGraphEdge[];
+  dotGraph: string;
+  variables: {
+    treatments: string[];
+    outcome: string | null;
+    confounders: string[];
+    instruments: string[];
+    effectModifiers: string[];
+  };
 }
 
 export interface DriverRow {

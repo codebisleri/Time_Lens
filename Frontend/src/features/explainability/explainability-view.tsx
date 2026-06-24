@@ -287,8 +287,8 @@ function ModelPanel({
     );
   }
 
-  // Phase X.ZZ.2 · Task 2 — the entire Mixture-of-Experts model-explanation
-  // section is hidden upstream (family === "moe"); no MoE message/card renders.
+  // Phase Y.1 · Task 2 — every family (incl. Mixture-of-Experts) renders an
+  // explanation. MoE uses the full driver set via the default `display = rows`.
   const rows = driverTableRows(contributions);
   const pick = (labels: string[]) => rows.filter((r) => labels.includes(r.driver));
   const exogRows = rows.filter((r) => !["Trend", "Seasonality", "Holiday", "Residual"].includes(r.driver));
@@ -498,11 +498,13 @@ export function ExplainabilityView() {
         )}
       </section>
 
-      {/* ── Global Driver Contribution (Task 1) — aggregate over the full horizon
-          (no month/horizon selector; one chart). ──────────────────────────── */}
+      {/* ── Global Driver Contributions (Phase Y.12 · Task A1) — the aggregate
+          contribution over the whole horizon. Single heading (the duplicate
+          "Driver Contribution" subheading was removed); PNG/CSV exports + the
+          chart are unchanged. ─────────────────────────────────────────────────── */}
       <section id="drivers" className="scroll-mt-24 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <SectionHeading icon={BarChart3}>Global Driver Contribution</SectionHeading>
+          <SectionHeading icon={BarChart3}>Global Driver Contributions</SectionHeading>
           {localReady ? (
             <ExportBar
               onPng={() => driverPng.exportPng(`explainability-drivers-${fileSafe(activeEntity)}.png`)}
@@ -524,7 +526,9 @@ export function ExplainabilityView() {
             </Card>
             <Card>
               <CardContent className="space-y-3 pt-6">
-                <SectionHeading icon={Table2}>Driver Importance</SectionHeading>
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Table2 className="size-4 text-primary" /> Driver Importance
+                </h3>
                 <DriverTable rows={driverRows} />
               </CardContent>
             </Card>
@@ -539,41 +543,27 @@ export function ExplainabilityView() {
         )}
       </section>
 
-      {/* ── Model-specific explanation. Hidden entirely for Mixture-of-Experts
-          (Task 2 — no title/card/message, no empty spacing). ───────────────── */}
-      {family !== "moe" ? (
-        <section id="model" className="scroll-mt-24 space-y-3">
-          <SectionHeading icon={Cpu}>{activeEntity ? FAMILY_TITLE[family] : "Model Explanation"}</SectionHeading>
-          <Card>
-            <CardContent className="pt-6">
-              {local.isLoading ? (
-                <Skeleton className="h-48 w-full" />
-              ) : activeEntity ? (
-                <ModelPanel family={family} contributions={localContrib} />
-              ) : (
-                <EmptyState title="No explainability information available" description="Select a forecast level to explain." />
-              )}
-            </CardContent>
-          </Card>
-        </section>
-      ) : null}
-
-      {/* ── Monthly Forecast Bridge (Tasks 6 & 7) ──────────────────────────── */}
+      {/* ── Local Driver Contributions (Phase Y.12 · Task A2) — its own section
+          heading above the Forecast Bridge (which stays the smaller chart title,
+          with the month selector + PNG/CSV exports). ────────────────────────── */}
       <section id="local" className="scroll-mt-24 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <SectionHeading icon={Layers}>Forecast Bridge — {activeEntity || levelLabel}</SectionHeading>
-          <div className="flex items-center gap-3">
-            <MonthSelect periods={periods} value={safeIdx} onChange={setMonthIdx} />
-            {bridgeSteps.length ? (
-              <ExportBar
-                onPng={() => waterfallPng.exportPng(`explainability-bridge-${fileSafe(activeEntity)}.png`)}
-                onCsv={() => downloadFile(`explainability-bridge-${fileSafe(activeEntity)}.csv`, waterfallToCsv(bridgeSteps, activeEntity))}
-              />
-            ) : null}
-          </div>
-        </div>
+        <SectionHeading icon={BarChart3}>Local Driver Contributions</SectionHeading>
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="space-y-3 pt-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Layers className="size-4 text-primary" /> Forecast Bridge — {activeEntity || levelLabel}
+              </h3>
+              <div className="flex items-center gap-3">
+                <MonthSelect periods={periods} value={safeIdx} onChange={setMonthIdx} />
+                {bridgeSteps.length ? (
+                  <ExportBar
+                    onPng={() => waterfallPng.exportPng(`explainability-bridge-${fileSafe(activeEntity)}.png`)}
+                    onCsv={() => downloadFile(`explainability-bridge-${fileSafe(activeEntity)}.csv`, waterfallToCsv(bridgeSteps, activeEntity))}
+                  />
+                ) : null}
+              </div>
+            </div>
             {local.isLoading ? (
               <Skeleton className="h-72 w-full" />
             ) : bridgeSteps.length ? (
@@ -589,6 +579,24 @@ export function ExplainabilityView() {
                 title="Estimated forecast drivers based on historical decomposition"
                 description="Not enough history yet to build a forecast bridge for this level."
               />
+            ) : (
+              <EmptyState title="No explainability information available" description="Select a forecast level to explain." />
+            )}
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* ── Model-specific explanation. Phase Y.1 · Task 2 — every supported model
+          family (incl. Mixture-of-Experts) renders its explanation. Moved below
+          the Local Driver Contributions group in Phase Y.4. ───────────────────── */}
+      <section id="model" className="scroll-mt-24 space-y-3">
+        <SectionHeading icon={Cpu}>{activeEntity ? FAMILY_TITLE[family] : "Model Explanation"}</SectionHeading>
+        <Card>
+          <CardContent className="pt-6">
+            {local.isLoading ? (
+              <Skeleton className="h-48 w-full" />
+            ) : activeEntity ? (
+              <ModelPanel family={family} contributions={localContrib} />
             ) : (
               <EmptyState title="No explainability information available" description="Select a forecast level to explain." />
             )}

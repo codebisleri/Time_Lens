@@ -58,6 +58,23 @@ export function ciMethodName(k: string | null | undefined): string | null {
   return map[k] ?? humanizeKey(k);
 }
 
+/** Reconciliation key → display ("bottom_up" → "Bottom-up"). */
+export function reconcileName(k: string | null | undefined): string | null {
+  if (!k) return null;
+  const map: Record<string, string> = {
+    bottom_up: "Bottom-up",
+    top_down: "Top-down",
+    middle_out: "Middle-out",
+  };
+  return map[k] ?? humanizeKey(k);
+}
+
+/** Residual-correction key → display ("xgb" → "XGB residual"; "none"/null → null). */
+export function residualName(k: string | null | undefined): string | null {
+  if (!k || k.toLowerCase() === "none") return null;
+  return `${k.toUpperCase()} residual`;
+}
+
 /**
  * Shared Profile & Route routing summary (Phase X.L · Task 9).
  *

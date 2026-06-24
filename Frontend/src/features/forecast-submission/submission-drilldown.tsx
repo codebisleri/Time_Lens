@@ -56,11 +56,13 @@ export function SubmissionDrilldown({ rows }: { rows: SubmissionRow[] }) {
     // §6 — explicit, high-contrast, theme-stable series colors so Model /
     // Submitted / LY-same-month are always clearly visible (they were washing out
     // against the background, and the LY line was being drawn with width 0).
-    // F.16 — navy/orange/neutral only: Model = muted neutral, Submitted = orange,
-    // LY = faint orange (distinguished by symbol/dash, not a new hue).
+    // Model = muted neutral, Submitted = orange. Phase Y.3 · Task 2 — "LY same
+    // month" is now GREY (was faint orange); distinguished from Model by its
+    // dashed line + diamond markers. Drives the legend swatch, line, chart legend
+    // and tooltip marker (all read this one color).
     const modelColor = readCssVar("--muted-foreground") || "#8d99a6";
     const submittedColor = "#EF7602"; // brand orange
-    const lyColor = "rgba(239,118,2,0.5)"; // faint orange
+    const lyColor = "#94a3b8"; // grey (slate-400)
     const labels = skuRows.map((r) =>
       formatDate(r.forecastMonth, { month: "short", year: "numeric", day: undefined }),
     );

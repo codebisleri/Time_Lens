@@ -59,6 +59,8 @@ export const endpoints = {
     causalFeatures: () => "/scenarios/causal/features",
     causalRun: () => "/scenarios/causal/run",
     causalDrivers: () => "/scenarios/causal/drivers",
+    // Phase Y.6 — read-only causal DAG (nodes + edges) for the current selection.
+    causalGraph: () => "/scenarios/causal/graph",
   },
   comparison: {
     compare: () => "/scenarios/compare",
@@ -80,6 +82,9 @@ export const endpoints = {
   eda: {
     get: () => "/eda",
     anomalies: () => "/eda/anomalies",
+    // Phase Y.2 hotfix — pairwise exogenous-driver correlation matrix (engineered
+    // + uploaded numeric drivers), computed server-side for the heatmap.
+    correlation: () => "/eda/correlation",
   },
   segmentation: {
     get: () => "/segmentation",

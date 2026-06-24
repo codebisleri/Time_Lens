@@ -1,6 +1,6 @@
 import { http } from "../client";
 import { endpoints } from "../endpoints";
-import type { EdaAnomalyApplyResult, EdaResult } from "@/types/eda";
+import type { EdaAnomalyApplyResult, EdaCorrelationResult, EdaResult } from "@/types/eda";
 
 /** One row of the editable anomaly-correction table. */
 export interface EdaAnomalyCorrection {
@@ -12,6 +12,12 @@ export interface EdaAnomalyCorrection {
 export const edaService = {
   get(params?: { datasetId?: string; sku?: string }): Promise<EdaResult> {
     return http.get<EdaResult>(endpoints.eda.get(), params);
+  },
+
+  /** Pairwise exogenous-driver correlation matrix (engineered + uploaded numeric
+   *  drivers), computed server-side. Drives the Exogenous Correlation heatmap. */
+  correlation(params?: { datasetId?: string; sku?: string }): Promise<EdaCorrelationResult> {
+    return http.get<EdaCorrelationResult>(endpoints.eda.correlation(), params);
   },
 
   /** Apply an edited anomaly table — recomputes the cleaned series server-side. */

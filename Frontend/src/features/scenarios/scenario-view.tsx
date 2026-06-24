@@ -14,7 +14,7 @@ import { EChartBase } from "@/components/charts/echart-base";
 import { useThemeMode } from "@/lib/theme/use-theme-mode";
 import { readCssVar } from "@/lib/theme/theme-config";
 import { useAsync } from "@/lib/hooks";
-import { forecastService, skuService, whatifService } from "@/lib/api/services";
+import { forecastService, whatifService } from "@/lib/api/services";
 import { formatDate, formatNumber } from "@/lib/utils/format";
 import { downloadFile } from "@/lib/utils/download";
 import { routes } from "@/lib/constants/routes";
@@ -26,6 +26,7 @@ import { NumericInput } from "@/components/ui/numeric-input";
 import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import { useScenarioPlanningStore } from "@/lib/stores/scenario-planning-store";
 import { ScenarioCausalView } from "./scenario-causal-view";
+import { CausalGraph } from "./causal-graph";
 import type { ForecastJob } from "@/types/forecast";
 import type {
   CausalRunResult,
@@ -99,25 +100,52 @@ function Kpi({ label, value, sub }: { label: string; value: string; sub?: string
   );
 }
 
+function humanList(items: string[]): string {
+  if (!items.length) return "";
+  if (items.length === 1) return items[0]!;
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+/** One-line, planner-friendly summary of the scenario impact (Task 6) — e.g.
+ *  "Promotion increases expected demand by 14% (+1,203 units) vs the baseline." */
+function whatifExplanation(r: ScenarioRunResult): string {
+  if (r.changePct == null || r.scenarioTotal == null) return "";
+  const feats = (r.appliedAdjustments ?? []).map((a) => a.feature);
+  const subject = feats.length ? humanList(feats) : "This adjustment";
+  const dir = r.changePct >= 0 ? "increases" : "reduces";
+  const mag = Math.abs(r.changePct).toFixed(1);
+  const units =
+    r.deltaUnits != null
+      ? ` (${r.deltaUnits >= 0 ? "+" : ""}${formatNumber(Math.round(r.deltaUnits))} units)`
+      : "";
+  return `${subject} ${dir} expected demand by ${mag}%${units} vs the baseline.`;
+}
+
 /**
  * Scenario Planning (Step 7 · What-If) — faithful to Streamlit's render_whatif_tab:
- * choose a SKU, add exog adjustments (% / constant / set-to) over the horizon, run
- * a re-forecast, and compare scenario vs baseline. Scenarios persist per user/dataset.
+ * choose a SKU, add exog adjustments (% / constant / set-to) over the EXISTING
+ * forecast horizon, run a re-forecast, and compare scenario vs baseline. A causal
+ * relationship graph is shown before running. Scenarios persist per user/dataset.
  */
 export function ScenarioPlanningView() {
   const workflow = useWorkflowStatus();
-  const skuQuery = useAsync(() => skuService.list({ page: 1, pageSize: 500 }), []);
+  // Phase Y.16 · Task 4 — the Scenario SKU list is ONLY the forecasted items
+  // (the latest forecast run's metrics), NOT the whole SKU catalog.
+  const metrics = useAsync(() => forecastService.metrics(), []);
   const saved = useAsync(() => whatifService.list(), []);
 
   const skus = useMemo(
-    () => (skuQuery.data?.items ?? []).map((s) => s.code),
-    [skuQuery.data],
+    () => (metrics.data?.skus ?? []).map((s) => s.sku),
+    [metrics.data],
   );
   const { label: levelLabel } = useForecastLevel();
   // Persisted planning state (Task 6 — survives refresh / restart / Electron).
-  const { mode, setMode, sku, setSku, periods, setPeriods, adjustments, setAdjustments,
+  // Phase Y.11 — no Forecast Horizon input here (parity with Streamlit's
+  // render_whatif_tab): the scenario reuses the EXISTING forecast horizon (the
+  // backend resolves it from the prior single-SKU run / saved config).
+  const { mode, setMode, sku, setSku, adjustments, setAdjustments,
     applyCausal, setApplyCausal, start, end, setWindow } = useScenarioPlanningStore();
-  const [horizonValid, setHorizonValid] = useState(true);
   const [features, setFeatures] = useState<string[]>([]);
   const [phase, setPhase] = useState<"idle" | "running" | "error">("idle");
   const [progress, setProgress] = useState(0);
@@ -131,11 +159,13 @@ export function ScenarioPlanningView() {
     cancelled.current = false;
     return () => { cancelled.current = true; };
   }, []);
+  // Seed / repair the selection: if nothing is chosen — or the persisted SKU is
+  // no longer among the forecasted SKUs — fall back to the first forecasted one.
   useEffect(() => {
-    if (!sku && skus.length) setSku(skus[0]!);
+    if (skus.length && !skus.includes(sku)) setSku(skus[0]!);
   }, [skus, sku]);
 
-  const activeSku = sku || skus[0] || "";
+  const activeSku = sku && skus.includes(sku) ? sku : (skus[0] ?? "");
 
   const pollJob = useCallback(async (start: ForecastJob): Promise<ForecastJob> => {
     let job = start;
@@ -175,7 +205,7 @@ export function ScenarioPlanningView() {
       }
       const job = await pollJob(
         await whatifService.run({
-          skuId: activeSku, periods, adjustments, causalAte,
+          skuId: activeSku, adjustments, causalAte,
           start: start || undefined, end: end || undefined,
         }),
       );
@@ -196,7 +226,7 @@ export function ScenarioPlanningView() {
       setError((err as { message?: string })?.message ?? "Scenario run failed.");
       setPhase("error");
     }
-  }, [activeSku, periods, adjustments, applyCausal, start, end, pollJob]);
+  }, [activeSku, adjustments, applyCausal, start, end, pollJob]);
 
   // Task 5 — auto-display all available features for the selected item (no manual
   // "add"). Fetch the item's adjustable drivers up front; each is a toggle row.
@@ -205,8 +235,9 @@ export function ScenarioPlanningView() {
     [activeSku],
   );
   const availableFeatures = useMemo(() => {
-    const d = featuresQuery.data;
-    const fromApi = d ? (d.exogAccountedFor.length ? d.exogAccountedFor : []) : [];
+    // `exogAccountedFor` is absent when the backend can't do causal analysis
+    // (e.g. DoWhy not installed) — guard against undefined before reading length.
+    const fromApi = featuresQuery.data?.exogAccountedFor ?? [];
     return fromApi.length ? fromApi : features; // fallback to run-derived features
   }, [featuresQuery.data, features]);
 
@@ -214,6 +245,15 @@ export function ScenarioPlanningView() {
     () => new Map(adjustments.map((a) => [a.feature, a])),
     [adjustments],
   );
+
+  // Relationship-graph variables (Task 4): the enabled adjustments are the
+  // treatments; the remaining drivers are shown as confounders → demand. Before
+  // any feature is enabled, show ALL drivers as the relationship map.
+  const enabledFeatures = useMemo(() => adjustments.map((a) => a.feature), [adjustments]);
+  const graphTreatments = enabledFeatures.length ? enabledFeatures : availableFeatures;
+  const graphConfounders = enabledFeatures.length
+    ? availableFeatures.filter((f) => !enabledFeatures.includes(f))
+    : [];
   const DEFAULT_ADJ = { type: "Percentage Change" as WhatIfChangeType, value: 10 };
   const toggleFeature = (f: string) =>
     setAdjustments(
@@ -303,7 +343,7 @@ export function ScenarioPlanningView() {
           to Step 3 · Profile & Route and Step 4 · Forecast. Only title/subtitle
           differ. variant="network" matches the Profile hero motif. */}
       <WorkflowHero
-        step="Step 6 · Scenarios"
+        step="Step 7 · Scenarios"
         title="What-If & Causal Sensitivity"
         subtitle="Simulate price / promo / festival impact — with causal effect estimation via DoWhy"
         icon={SlidersHorizontal}
@@ -378,29 +418,16 @@ export function ScenarioPlanningView() {
           <CardTitle className="text-base">Build a what-if scenario</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label={levelLabel}>
-              <Select
-                value={activeSku}
-                onChange={setSku}
-                options={skus.map((s) => ({ value: s, label: s }))}
-                ariaLabel={levelLabel}
-              />
-            </Field>
-            <Field label="Forecast Horizon">
-              <NumericInput
-                min={1}
-                max={36}
-                value={periods}
-                onChange={(v) => setPeriods(v)}
-                onValidityChange={setHorizonValid}
-                hardLimit
-                ariaLabel="Forecast horizon"
-                label="Forecast horizon"
-                unit="months"
-              />
-            </Field>
-          </div>
+          {/* Phase Y.11 — Forecast Horizon input removed (Streamlit parity): the
+              scenario reuses the existing forecast horizon automatically. */}
+          <Field label={levelLabel}>
+            <Select
+              value={activeSku}
+              onChange={setSku}
+              options={skus.map((s) => ({ value: s, label: s }))}
+              ariaLabel={levelLabel}
+            />
+          </Field>
 
           {/* Task 5 — all available features for this item, each a toggle row
               (ON/OFF · editable value · reset). Only enabled rows are applied. */}
@@ -479,7 +506,7 @@ export function ScenarioPlanningView() {
           ) : null}
 
           <div className="flex items-center gap-3 border-t border-border/60 pt-4">
-            <Button onClick={() => void run()} disabled={running || !activeSku || !horizonValid} className="sm:w-56">
+            <Button onClick={() => void run()} disabled={running || !activeSku} className="sm:w-56">
               {running ? (
                 <><Loader2 className="size-4 animate-spin" /> {`Running… ${progress}%`}</>
               ) : (
@@ -497,6 +524,19 @@ export function ScenarioPlanningView() {
           ) : null}
         </CardContent>
       </Card>
+
+      {/* Task 4 — model / causal relationship graph, shown BEFORE Run Scenario so
+          the planner understands how the selected drivers relate to demand. Derived
+          from the selected SKU; read-only structure (no DoWhy estimation needed). */}
+      {activeSku ? (
+        <CausalGraph
+          sku={activeSku}
+          treatments={graphTreatments}
+          confounders={graphConfounders}
+          instruments={[]}
+          effectModifiers={[]}
+        />
+      ) : null}
 
       {/* Result */}
       <span id="results" className="block scroll-mt-24" aria-hidden />
@@ -518,6 +558,13 @@ export function ScenarioPlanningView() {
             <Kpi label="Change %" value={signed(result.changePct)} />
           </div>
 
+          {/* Task 6 — one-line, planner-friendly impact explanation. */}
+          {whatifExplanation(result) ? (
+            <div className="rounded-md border border-primary/25 bg-primary/5 px-4 py-2.5 text-sm font-medium text-foreground">
+              {whatifExplanation(result)}
+            </div>
+          ) : null}
+
           <Card>
             <CardContent className="space-y-3 pt-6">
               <div className="flex items-center justify-between">
@@ -529,6 +576,47 @@ export function ScenarioPlanningView() {
               <ScenarioChart result={result} />
             </CardContent>
           </Card>
+
+          {/* Task 5 — scenario waterfall: Baseline → per-driver contribution →
+              Scenario, derived from the existing forecast (no re-run). */}
+          {result.waterfall && result.waterfall.length > 2 ? (
+            <Card>
+              <CardContent className="space-y-2 pt-6">
+                <h3 className="text-sm font-medium text-foreground">Scenario breakdown</h3>
+                <div className="divide-y divide-border/60">
+                  {result.waterfall.map((step, i) => {
+                    const isEdge = step.type !== "delta";
+                    const v = Math.round(step.value);
+                    const display =
+                      isEdge
+                        ? formatNumber(v)
+                        : `${v > 0 ? "+" : ""}${formatNumber(v)}`;
+                    return (
+                      <div key={`${step.label}-${i}`} className="flex items-center justify-between py-2 text-sm">
+                        <span className={isEdge ? "font-semibold text-foreground" : "text-muted-foreground"}>
+                          {step.label}
+                        </span>
+                        <span
+                          className={
+                            "tabular-nums " +
+                            (isEdge
+                              ? "font-semibold text-foreground"
+                              : v > 0
+                                ? "text-success"
+                                : v < 0
+                                  ? "text-destructive"
+                                  : "text-muted-foreground")
+                          }
+                        >
+                          {display} units
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
 
           {result.supported ? (
             <Card>

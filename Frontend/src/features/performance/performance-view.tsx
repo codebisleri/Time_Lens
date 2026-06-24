@@ -17,6 +17,7 @@ import { downloadFile } from "@/lib/utils/download";
 import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type { ForecastMetricRow, ForecastRunMetrics } from "@/types/forecast";
 import { WorkflowLock } from "@/features/workflow/workflow-lock";
+import { ContinueButton } from "@/features/workflow/continue-button";
 import { useWorkflowStatus } from "@/features/workflow/use-workflow-status";
 import { routes } from "@/lib/constants/routes";
 import { usePerformance } from "./hooks/use-performance";
@@ -412,7 +413,7 @@ function SkuTab({ rows }: { rows: ForecastMetricRow[] }) {
 }
 
 /**
- * Performance Analytics (Step 7) — pooled forecast-accuracy diagnostics over the
+ * Performance Analytics (Step 5) — pooled forecast-accuracy diagnostics over the
  * latest run. Mirrors the Streamlit Performance tab: a traffic-light KPI strip
  * plus Segment / Brand / Brand×Segment / SKU breakdowns, all from the live
  * /forecasts/metrics endpoint (per-SKU series fetched lazily in the drill-down).
@@ -435,7 +436,7 @@ export function PerformanceView() {
     return (
       <PageShell
         title="Performance Analytics"
-        description="Step 7 — backtest accuracy diagnostics across the latest forecast run."
+        description="Step 5 — backtest accuracy diagnostics across the latest forecast run."
       >
         <WorkflowLock
           title="No performance data"
@@ -460,7 +461,7 @@ export function PerformanceView() {
       }
     >
       <WorkflowHero
-        step="Step 7 · Performance"
+        step="Step 5 · Performance"
         title="Forecast Accuracy Diagnostics"
         subtitle={`Backtest accuracy across the latest run — WMAPE, SMAPE, bias, and coverage by segment, brand, and ${levelLabel}.`}
         icon={Gauge}
@@ -523,6 +524,16 @@ export function PerformanceView() {
           {tab === "Brand" ? <BrandTab data={perf.data} /> : null}
           {tab === "Brand × Segment" ? <BrandSegmentTab data={perf.data} /> : null}
           {tab === "SKU" ? <SkuTab rows={rows} /> : null}
+
+          {/* Phase Y.3 · Task 4 — forward navigation to the next step
+              (Forecast Submission, now Step 6). */}
+          <div className="flex justify-end">
+            <ContinueButton
+              href={routes.forecastSubmission}
+              label="Continue to Forecast Submission"
+              loadingLabel="Loading Submission…"
+            />
+          </div>
         </div>
       ) : null}
     </PageShell>

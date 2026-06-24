@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EChartsOption } from "echarts";
-import { Loader2, Play, Trophy, Download, GitBranch } from "lucide-react";
+import { Loader2, Play, Trophy, Download, GitBranch, ChevronDown, Check, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ import { downloadFile } from "@/lib/utils/download";
 import { useScenarioPlanningStore } from "@/lib/stores/scenario-planning-store";
 import type { ForecastJob } from "@/types/forecast";
 import type { CausalRunResult, DriversResult } from "@/types/whatif";
+import { CausalGraph } from "./causal-graph";
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const POLL_MS = 2500;
@@ -85,6 +86,164 @@ function Multi({
           ))
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Searchable multi-select dropdown (Phase Y.4 · Task 3). Replaces the long chip
+ * lists in Scenario → Advanced Settings (Confounders / Instruments / Effect
+ * Modifiers) so dozens of feature columns no longer force endless scrolling.
+ * Searchable, keyboard-navigable (↑/↓/Enter/Esc), with a scrollable option list
+ * and the current selections shown as removable chips below the trigger. The
+ * selection is the SAME `string[]` the chips used, so persisted Zustand state and
+ * the causal run payload are unchanged.
+ */
+function SearchableMultiSelect({
+  label,
+  options,
+  value,
+  onChange,
+  exclude = [],
+  placeholder = "Select…",
+}: {
+  label: string;
+  options: string[];
+  value: string[];
+  onChange: (v: string[]) => void;
+  exclude?: string[];
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeIdx, setActiveIdx] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const pool = options.filter((o) => !exclude.includes(o));
+  const filtered = pool.filter((o) =>
+    o.toLowerCase().includes(query.trim().toLowerCase()),
+  );
+
+  // Close on outside click / Escape so the dropdown never traps focus.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
+
+  useEffect(() => {
+    setActiveIdx(0);
+  }, [query, open]);
+
+  const toggle = (o: string) =>
+    onChange(value.includes(o) ? value.filter((x) => x !== o) : [...value, o]);
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIdx((i) => Math.min(i + 1, Math.max(0, filtered.length - 1)));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIdx((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const o = filtered[activeIdx];
+      if (o) toggle(o);
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1.5" ref={containerRef}>
+      <p className="text-xs font-medium text-foreground">{label}</p>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          disabled={pool.length === 0}
+          className="flex h-9 w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-left text-xs text-muted-foreground transition-colors hover:bg-secondary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <span className="truncate">
+            {pool.length === 0
+              ? "No columns available"
+              : value.length
+                ? `${value.length} selected`
+                : placeholder}
+          </span>
+          <ChevronDown className="size-4 shrink-0 opacity-60" />
+        </button>
+        {open && pool.length > 0 ? (
+          <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-md border border-border bg-popover shadow-md">
+            <div className="border-b border-border/60 p-2">
+              <input
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={onKeyDown}
+                placeholder="Search…"
+                aria-label={`Search ${label}`}
+                className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </div>
+            <div role="listbox" aria-multiselectable className="max-h-56 overflow-auto p-1">
+              {filtered.length === 0 ? (
+                <p className="px-2 py-3 text-center text-xs text-muted-foreground">No matches.</p>
+              ) : (
+                filtered.map((o, i) => {
+                  const selected = value.includes(o);
+                  return (
+                    <button
+                      key={o}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      onMouseEnter={() => setActiveIdx(i)}
+                      onClick={() => toggle(o)}
+                      className={
+                        "flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors " +
+                        (i === activeIdx ? "bg-secondary/70 " : "") +
+                        (selected ? "font-medium text-primary" : "text-foreground")
+                      }
+                    >
+                      <span className="truncate">{o}</span>
+                      {selected ? <Check className="size-3.5 shrink-0 text-primary" /> : null}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        ) : null}
+      </div>
+      {/* Selected values as removable chips, below the dropdown. */}
+      {value.length ? (
+        <div className="flex flex-wrap gap-1.5 pt-0.5">
+          {value.map((o) => (
+            <span
+              key={o}
+              className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-xs text-primary"
+            >
+              {o}
+              <button
+                type="button"
+                onClick={() => toggle(o)}
+                aria-label={`Remove ${o}`}
+                className="rounded-full p-0.5 hover:bg-primary/20"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -225,11 +384,21 @@ export function ScenarioCausalView({ sku }: { sku: string }) {
         methods, refuters, computeCi,
       }));
       if (cancelled.current) return;
-      if (job.status === "failed") { setError(job.error ?? "Causal run failed."); setPhase("error"); return; }
+      // Phase Y.17 · Task 9 — friendly, jargon-free fallback (no stack traces).
+      if (job.status === "failed") {
+        if (job.error) console.error("CAUSAL RUN ERROR:", job.error);
+        setError("Causal estimation unavailable for the selected variables.");
+        setPhase("error");
+        return;
+      }
       setImpact((job.result as CausalRunResult) ?? null);
       setPhase("idle");
     } catch (e) {
-      if (!cancelled.current) { setError((e as { message?: string })?.message ?? "Causal run failed."); setPhase("error"); }
+      if (!cancelled.current) {
+        console.error("CAUSAL RUN ERROR:", e);
+        setError("Causal estimation unavailable for the selected variables.");
+        setPhase("error");
+      }
     }
   }, [sku, treatments, confounders, instruments, effectModifiers, methods, refuters, computeCi, poll]);
 
@@ -262,14 +431,12 @@ export function ScenarioCausalView({ sku }: { sku: string }) {
 
   const running = phase === "running";
 
-  if (!dowhyAvailable) {
-    return (
-      <EmptyState
-        title="Causal analysis unavailable"
-        description={featuresQuery.data?.message || "Install dowhy and graphviz on the server to enable Causal Effect Estimation."}
-      />
-    );
-  }
+  // Phase Y.11 — do NOT blank the whole causal tab when DoWhy is missing. The
+  // candidate variables + the structural causal graph + the plain-language
+  // explanation need NO DoWhy, so they always render; only the numeric effect
+  // ESTIMATION needs DoWhy (the run buttons gate on `dowhyAvailable` and a banner
+  // explains it). `featuresQuery.data` present + available === false ⇒ no DoWhy.
+  const estimationUnavailable = featuresQuery.data != null && !dowhyAvailable;
 
   return (
     <>
@@ -278,6 +445,14 @@ export function ScenarioCausalView({ sku }: { sku: string }) {
           <CardTitle className="text-base">Causal Effect Estimation (DoWhy)</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {estimationUnavailable ? (
+            <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground">
+              <span className="font-medium">Causal estimation unavailable for this scenario.</span>{" "}
+              {featuresQuery.data?.message ||
+                "Install dowhy + graphviz on the server to compute effect values."}{" "}
+              You can still build and view the causal structure below.
+            </div>
+          ) : null}
           <p className="text-sm text-muted-foreground">
             Most charts show what <em>moves together</em> with demand. Causal AI answers: <strong>if I
             change this lever, how much will demand actually move?</strong> — adjusting for your other drivers.
@@ -324,22 +499,25 @@ export function ScenarioCausalView({ sku }: { sku: string }) {
                   ⚙️ Advanced settings (defaults work for most cases)
                 </summary>
                 <div className="mt-3 space-y-3">
-                  <Multi
+                  <SearchableMultiSelect
                     label="Other factors to adjust for (confounders)"
+                    placeholder="Select confounders…"
                     options={columns}
                     value={confounders}
                     onChange={(v) => setCausal({ confounders: v })}
                     exclude={treatments}
                   />
-                  <Multi
+                  <SearchableMultiSelect
                     label="Instruments (a nudge that moves the lever but not demand directly)"
+                    placeholder="Select instruments…"
                     options={columns}
                     value={instruments}
                     onChange={(v) => setCausal({ instruments: v })}
                     exclude={[...treatments, ...confounders]}
                   />
-                  <Multi
+                  <SearchableMultiSelect
                     label="Segments the effect may differ across (effect modifiers)"
+                    placeholder="Select effect modifiers…"
                     options={columns}
                     value={effectModifiers}
                     onChange={(v) => setCausal({ effectModifiers: v })}
@@ -407,7 +585,11 @@ export function ScenarioCausalView({ sku }: { sku: string }) {
                   </label>
                 </div>
               </details>
-              <Button onClick={() => void runImpact()} disabled={running || treatments.length === 0}>
+              <Button
+                onClick={() => void runImpact()}
+                disabled={running || treatments.length === 0 || !dowhyAvailable}
+                title={!dowhyAvailable ? "Causal estimation unavailable (DoWhy not installed on the server)." : undefined}
+              >
                 {running ? <><Loader2 className="size-4 animate-spin" /> {`Measuring… ${progress}%`}</> : <><Play className="size-4" /> Measure impact on demand</>}
               </Button>
             </div>
@@ -416,7 +598,11 @@ export function ScenarioCausalView({ sku }: { sku: string }) {
               <p className="text-sm text-muted-foreground">
                 Ranks <strong>every</strong> factor by how much it actually moves demand, so you know where to focus first.
               </p>
-              <Button onClick={() => void runDrivers()} disabled={running}>
+              <Button
+                onClick={() => void runDrivers()}
+                disabled={running || !dowhyAvailable}
+                title={!dowhyAvailable ? "Causal estimation unavailable (DoWhy not installed on the server)." : undefined}
+              >
                 {running ? <><Loader2 className="size-4 animate-spin" /> {`Ranking… ${progress}%`}</> : <><Trophy className="size-4" /> Rank the levers</>}
               </Button>
             </div>
@@ -426,6 +612,19 @@ export function ScenarioCausalView({ sku }: { sku: string }) {
           ) : null}
         </CardContent>
       </Card>
+
+      {/* Phase Y.6 — live causal structure (DAG) for the current selection. It
+          appears as soon as a treatment is chosen, independent of running the
+          estimation; read-only structure only (no DoWhy math). */}
+      {causalTask === "impact" ? (
+        <CausalGraph
+          sku={sku}
+          treatments={treatments}
+          confounders={confounders}
+          instruments={instruments}
+          effectModifiers={effectModifiers}
+        />
+      ) : null}
 
       {/* Impact results */}
       {causalTask === "impact" && impact ? (

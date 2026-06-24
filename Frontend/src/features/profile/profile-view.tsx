@@ -53,6 +53,7 @@ import { Disclosure } from "@/features/workflow/disclosure";
 import { useWorkflowStatus } from "@/features/workflow/use-workflow-status";
 import { useSegmentation, useSegmentationRuns } from "./hooks/use-segmentation";
 import { SegmentGridSkeleton } from "./segment-grid";
+import { SegmentArchitecture } from "./segment-architecture";
 import { SegmentTable } from "./segment-table";
 import { SegmentTraceDrawer } from "./segment-trace-drawer";
 import { TraceSteps } from "./trace-steps";
@@ -522,11 +523,26 @@ function ProfileContent({
         <KpiTile icon={Tags} label="Brands" value={formatNumber(data.brands.length)} />
       </div>
 
-      {/* Phase X.C · Task 8 — the old per-segment summary cards (SegmentGrid)
-          were removed. The segment story now lives in the distribution chart +
-          the auto-routed Final Algorithm Selection panel below. Anchor kept so
-          the section nav still resolves. */}
-      <span id="segmentation" className="block scroll-mt-24" aria-hidden />
+      {/* Phase Y.1 · Task 1 — Profile & Route is the main routing-explanation
+          screen. Each segment card surfaces its primary / secondary models,
+          routing rationale, feature tags, and a footer with the confidence
+          method, reconciliation level and residual correction — alongside the
+          existing segment colour, count and contribution share. READ-ONLY: all
+          values come from the stored segment architecture; no routing changes. */}
+      <section id="segmentation" className="scroll-mt-24 space-y-2">
+        <h3 className="text-base font-semibold tracking-tight text-foreground">
+          Segment Routing & Model Architecture
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          How each segment is forecast — primary &amp; secondary models, engineered drivers,
+          confidence-interval method, reconciliation and residual correction.
+        </p>
+        <SegmentArchitecture
+          segments={data.segments}
+          levelPlural={levelPlural}
+          revenueBasis={data.revenueBasis}
+        />
+      </section>
 
       {/* Trace accordion */}
       <Disclosure title={`🔍 Trace a ${levelLabel} — show the exact arithmetic`}>

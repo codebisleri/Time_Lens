@@ -56,6 +56,8 @@ interface ForecastPrefsState {
   segmentOverrides: Record<string, SegmentOverride>;
   setSegmentPrimary: (segment: string, primary: string | null) => void;
   toggleSegmentExtra: (segment: string, key: string) => void;
+  /** Replace the whole secondary-model set for a segment (multi-select dropdown). */
+  setSegmentExtras: (segment: string, extras: string[]) => void;
   resetSegmentOverrides: () => void;
 
   /**
@@ -104,6 +106,18 @@ export const useForecastStore = create<ForecastPrefsState>()(
               segmentOverrides: {
                 ...s.segmentOverrides,
                 [segment]: { ...prev, extras },
+              },
+            };
+          }),
+        setSegmentExtras: (segment, extras) =>
+          set((s) => {
+            const prev = s.segmentOverrides[segment] ?? emptyOverride();
+            // The primary can't also be a secondary.
+            const cleaned = extras.filter((e) => e !== prev.primary);
+            return {
+              segmentOverrides: {
+                ...s.segmentOverrides,
+                [segment]: { ...prev, extras: cleaned },
               },
             };
           }),

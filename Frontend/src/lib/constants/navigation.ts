@@ -18,9 +18,10 @@ import { routes } from "./routes";
  * from this config and breadcrumbs derive labels from it — adding a page means
  * adding one entry here, nothing else.
  *
- * Single-workflow mode — the journey, in order:
- *   Data · EDA · Profile & Route · Forecast · Forecast Submission ·
- *   Performance · Scenarios · Report
+ * Single-workflow mode — the journey, in order (Phase Y.3 · Task 4 — Performance
+ * now precedes Forecast Submission):
+ *   Data · EDA · Profile & Route · Forecast · Performance ·
+ *   Forecast Submission · Scenarios · Report
  * (Dashboard is intentionally excluded; Scenarios is the post-forecast what-if.)
  */
 /** In-page section the sidebar can jump to via an #anchor on the route. */
@@ -112,12 +113,12 @@ export const NAV_SECTIONS: NavSection[] = [
           { label: "Results", anchor: "results" },
         ],
       },
+      { label: "Performance", href: routes.performance, icon: Gauge },
       {
         label: "Forecast Submission",
         href: routes.forecastSubmission,
         icon: ClipboardCheck,
       },
-      { label: "Performance", href: routes.performance, icon: Gauge },
       // Phase X.U — read-only explainability step: Forecast → Explainability → Scenario.
       {
         label: "Explainability",
@@ -125,9 +126,10 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: PieChart,
         sections: [
           { label: "Summary", anchor: "summary" },
-          { label: "Driver Contribution", anchor: "drivers" },
+          // Phase Y.12 — distinct Global vs Local driver-contribution sections.
+          { label: "Global Driver Contributions", anchor: "drivers" },
+          { label: "Local Driver Contributions", anchor: "local" },
           { label: "Model Explanation", anchor: "model" },
-          { label: "Forecast Bridge", anchor: "local" },
           { label: "By Horizon", anchor: "horizon" },
         ],
       },

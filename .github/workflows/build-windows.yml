@@ -1,0 +1,106 @@
+name: Build Windows
+
+# D.7 — Windows desktop release pipeline. Manual trigger only (workflow_dispatch);
+# builds the PyInstaller backend (backend.exe onedir), the Next.js standalone web
+# bundle, and the Electron NSIS installer + portable .exe (x64), then uploads them.
+# Mirrors build-macos.yml. Unsigned (no code-signing certs configured).
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Backend (FastAPI → PyInstaller onedir → backend.exe) ────────────────
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: Backend/requirements_fixed.txt
+
+      - name: Install backend dependencies
+        working-directory: Backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_fixed.txt
+          pip install pyinstaller
+
+      - name: Build backend (PyInstaller)
+        working-directory: Backend
+        run: python -m PyInstaller backend.spec --noconfirm
+
+      - name: Verify backend bundle
+        working-directory: Backend
+        shell: bash
+        run: |
+          test -f dist/backend/backend.exe || { echo "backend.exe missing"; exit 1; }
+          test -d dist/backend/_internal || { echo "_internal payload missing"; exit 1; }
+          ls -la dist/backend | head -n 20
+
+      # ── Frontend (Next.js standalone) ───────────────────────────────────────
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: Frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: Frontend
+        run: npm ci
+
+      - name: Build web (standalone)
+        working-directory: Frontend
+        run: npm run build:web
+
+      - name: Verify standalone bundle
+        working-directory: Frontend
+        shell: bash
+        run: |
+          test -f .next/standalone/server.js || { echo "standalone server.js missing"; exit 1; }
+          test -d .next/standalone/.next/static || { echo "static assets missing"; exit 1; }
+          test -d .next/standalone/public || { echo "public assets missing"; exit 1; }
+
+      # ── Desktop (Electron → NSIS installer + portable, x64) ─────────────────
+      - name: Build Windows desktop (nsis + portable, x64)
+        working-directory: Frontend
+        env:
+          # Unsigned build — don't let electron-builder look for signing certs.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npx electron-builder --win nsis portable --x64
+
+      - name: List build output
+        working-directory: Frontend
+        shell: bash
+        run: ls -la dist-desktop || true
+
+      # Assert the backend + Next standalone landed inside the unpacked app
+      # (the afterPack hook copies the Next standalone into resources/web on Windows).
+      - name: Verify packaged resources
+        working-directory: Frontend
+        shell: bash
+        run: |
+          test -f dist-desktop/win-unpacked/resources/web/server.js || { echo "server.js missing"; exit 1; }
+          test -d dist-desktop/win-unpacked/resources/web/.next || { echo ".next missing"; exit 1; }
+          test -d dist-desktop/win-unpacked/resources/web/public || { echo "public missing"; exit 1; }
+          test -f dist-desktop/win-unpacked/resources/backend/backend.exe || { echo "backend.exe missing"; exit 1; }
+          echo "server.js, .next, public, backend.exe present"
+
+      # ── Artifacts ───────────────────────────────────────────────────────────
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: timelens-windows
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            Frontend/dist-desktop/*.exe
+            Frontend/dist-desktop/*.blockmap
+            Frontend/dist-desktop/latest.yml

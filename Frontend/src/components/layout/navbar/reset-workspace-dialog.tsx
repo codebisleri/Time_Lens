@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
-import { AlertTriangle, Loader2, RotateCcw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { resetWorkspace } from "@/lib/utils/session";
@@ -22,13 +22,13 @@ import { routes } from "@/lib/constants/routes";
  */
 
 const CLEARS = [
-  "uploaded datasets",
+  "Uploaded datasets",
   "EDA results",
-  "forecast results",
-  "candidate & champion models",
-  "submissions & reconciliation",
-  "filters, selections & charts",
-  "cached state",
+  "Forecast results",
+  "Candidate & champion models",
+  "Submissions & reconciliation",
+  "Filters and chart selections",
+  "Cached workspace state",
 ];
 
 export function ResetWorkspaceDialog({
@@ -44,18 +44,17 @@ export function ResetWorkspaceDialog({
     setBusy(true);
     try {
       await resetWorkspace();
+      toast.success("Workspace reset successfully.");
       onOpenChange(false);
-      // Full document load → fresh client state + empty dataset re-fetch.
-      window.location.assign(routes.data);
-      // (Stay "busy" until the navigation tears the page down.)
+      // Full document load → fresh client state + empty dataset re-fetch. A brief
+      // delay lets the success toast render before the page tears down; we stay
+      // "busy" until the navigation so the action can't be re-triggered.
+      window.setTimeout(() => window.location.assign(routes.data), 700);
       return;
     } catch (err) {
-      // Surface the REAL error (F.18A) instead of swallowing it.
+      // Never crash — surface a clear message and log the real error for debugging.
       console.error("WORKSPACE RESET ERROR:", err);
-      toast.error(
-        err instanceof Error ? err.message : "Couldn’t reset the workspace. Please try again.",
-      );
-    } finally {
+      toast.error("Unable to reset workspace.");
       setBusy(false);
     }
   }
@@ -65,46 +64,67 @@ export function ResetWorkspaceDialog({
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <Dialog.Content
-          className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-card p-6 shadow-[var(--shadow-lg)] focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+          className="fixed left-1/2 top-1/2 z-50 flex max-h-[90vh] w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[var(--shadow-lg)] focus:outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-[760px]"
           onEscapeKeyDown={(e) => busy && e.preventDefault()}
           onInteractOutside={(e) => busy && e.preventDefault()}
         >
-          <div className="flex items-start gap-3">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-brand-accent/15 text-brand-accent">
-              <RotateCcw className="size-5" />
+          {/* Header */}
+          <div className="flex items-start gap-4 p-7 pb-5">
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-brand-accent/15 text-brand-accent">
+              <RotateCcw className="size-6" />
             </span>
-            <div className="min-w-0">
-              <Dialog.Title className="text-lg font-semibold text-foreground">
+            <div className="min-w-0 space-y-1.5">
+              <Dialog.Title className="text-xl font-semibold tracking-tight text-foreground">
                 Start New Forecast Session?
               </Dialog.Title>
-              <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-                This will permanently remove:
+              <Dialog.Description className="text-sm leading-relaxed text-muted-foreground">
+                Starting a new session will permanently remove the current workspace.
               </Dialog.Description>
             </div>
           </div>
 
-          <ul className="mt-3 grid grid-cols-1 gap-x-4 gap-y-1.5 sm:grid-cols-2">
-            {CLEARS.map((c) => (
-              <li key={c} className="flex items-center gap-2 text-sm text-foreground">
-                <span className="size-1.5 shrink-0 rounded-full bg-brand-accent" aria-hidden />
-                {c}
-              </li>
-            ))}
-          </ul>
+          {/* Body — scrolls on very short screens so nothing clips. */}
+          <div className="flex-1 space-y-5 overflow-y-auto px-7">
+            <div className="rounded-xl border border-border/70 bg-secondary/30 p-5">
+              <p className="text-sm font-medium text-foreground">
+                The following items will be cleared:
+              </p>
+              <ul className="mt-4 grid grid-cols-1 gap-3">
+                {CLEARS.map((c) => (
+                  <li
+                    key={c}
+                    className="flex items-center gap-3 text-sm leading-relaxed text-foreground"
+                  >
+                    <CheckCircle2 className="size-4 shrink-0 text-brand-accent" aria-hidden />
+                    <span>{c}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
 
-          <p className="mt-4 flex items-center gap-1.5 text-xs font-medium text-brand-accent">
-            <AlertTriangle className="size-3.5" />
-            This action cannot be undone.
-          </p>
+            {/* Warning box — light-orange, clearly separated. */}
+            <div className="flex items-center gap-3 rounded-xl border border-brand-accent/30 bg-brand-accent/10 px-4 py-3.5">
+              <AlertTriangle className="size-5 shrink-0 text-brand-accent" aria-hidden />
+              <p className="text-sm font-medium text-foreground">
+                This action cannot be undone.
+              </p>
+            </div>
+          </div>
 
-          <div className="mt-6 flex justify-end gap-2">
-            <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
+          {/* Footer — equal-height buttons, right-aligned (stacks on mobile). */}
+          <div className="mt-6 flex flex-col-reverse gap-3 border-t border-border/60 p-7 pt-5 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => onOpenChange(false)}
+              className="sm:min-w-28"
+            >
               Cancel
             </Button>
             <Button
               disabled={busy}
               onClick={confirm}
-              className="bg-brand-accent text-white hover:bg-brand-accent/90"
+              className="bg-brand-accent text-white hover:bg-brand-accent/90 sm:min-w-44"
             >
               {busy ? (
                 <>

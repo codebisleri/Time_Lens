@@ -116,13 +116,25 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 # Data + DB live under a USER-WRITABLE home so a packaged install (Program Files,
 # which is read-only for standard users) can still persist datasets/forecasts/
 # scenarios/submissions. The Electron launcher sets TIMELENS_DATA_DIR to
-# %APPDATA%/Time Lens; in dev (unset) it falls back to the source tree so nothing
-# changes for `python api.py`.
-_DATA_HOME = os.environ.get("TIMELENS_DATA_DIR") or BASE_DIR
+# %APPDATA%/Time Lens.
+#
+# In dev (unset) it defaults to ~/.timelens — DELIBERATELY OUTSIDE the source
+# tree. Previously this fell back to BASE_DIR (the Backend source dir), so every
+# runtime write (api_bridge.db, uploads, the engine's dhisha_segments.db) landed
+# in the directory `uvicorn --reload` watches → a forecast run rewrote those DBs
+# → the server hot-reloaded mid-run → the in-memory job registry was wiped and
+# the worker thread killed → GET /forecasts/jobs/{id} 404'd. Keeping runtime data
+# out of the watched tree removes that reload trigger. Override with
+# TIMELENS_DATA_DIR. (Jobs are ALSO persisted to SQLite — see _job_* below.)
+_DATA_HOME = os.environ.get("TIMELENS_DATA_DIR") or os.path.join(
+    os.path.expanduser("~"), ".timelens")
 os.makedirs(_DATA_HOME, exist_ok=True)
 DATA_DIR = os.path.join(_DATA_HOME, "api_data")
 DB_PATH = os.path.join(_DATA_HOME, "api_bridge.db")
 os.makedirs(DATA_DIR, exist_ok=True)
+# Route the engine's segmentation DB under the same writable home (only when not
+# already configured) so NO runtime DB is written into the source tree.
+os.environ.setdefault("TIMELENS_DB_PATH", os.path.join(_DATA_HOME, "dhisha_segments.db"))
 
 # How many SKUs a single /forecasts/run processes by default (kept small so the
 # synchronous request returns quickly). Override per-request via `limit`.
@@ -140,15 +152,62 @@ _JOBS: Dict[str, Dict[str, Any]] = {}
 _JOBS_LOCK = threading.Lock()
 
 
+def _job_persist(job: Dict[str, Any]) -> None:
+    """Persist a job snapshot to SQLite so a poll survives a process restart / dev
+    hot-reload — the in-memory _JOBS dict is otherwise lost, 404-ing the poll.
+    Best-effort: a persistence hiccup never breaks the in-memory job flow."""
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO forecast_jobs (job_id, payload, updated_at) "
+                "VALUES (?, ?, ?)",
+                (str(job.get("id")), json.dumps(job, default=str), now_iso()),
+            )
+    except Exception as exc:
+        logging.warning("forecast job persist failed: %s", exc)
+
+
+def _job_load(job_id: str) -> Optional[Dict[str, Any]]:
+    """Read a persisted job snapshot from SQLite (used after a restart/reload)."""
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT payload FROM forecast_jobs WHERE job_id = ?", (job_id,)
+            ).fetchone()
+        if row and row["payload"]:
+            return json.loads(row["payload"])
+    except Exception as exc:
+        logging.warning("forecast job load failed: %s", exc)
+    return None
+
+
+def _job_create(job: Dict[str, Any]) -> None:
+    """Register a NEW async job: in memory (fast path) AND persisted to SQLite."""
+    with _JOBS_LOCK:
+        _JOBS[str(job["id"])] = job
+    _job_persist(job)
+
+
 def _job_update(job_id: str, **updates: Any) -> None:
     with _JOBS_LOCK:
-        if job_id in _JOBS:
-            _JOBS[job_id].update(updates)
+        cur = _JOBS.get(job_id)
+        if cur is None:
+            # Lost from memory (e.g. after a reload) — rehydrate from SQLite so
+            # progress/result still accumulate onto the persisted snapshot.
+            cur = _job_load(job_id) or {"id": job_id}
+        cur.update(updates)
+        _JOBS[job_id] = cur
+        snapshot = dict(cur)
+    _job_persist(snapshot)
 
 
 def _job_get(job_id: str) -> Optional[Dict[str, Any]]:
     with _JOBS_LOCK:
-        return dict(_JOBS[job_id]) if job_id in _JOBS else None
+        if job_id in _JOBS:
+            return dict(_JOBS[job_id])
+    # Fall back to the persisted snapshot so a poll after a restart/reload returns
+    # the job's last-known {status, progress, result} instead of a 404.
+    return _job_load(job_id)
 
 
 class _Heartbeat:
@@ -225,6 +284,14 @@ def init_db() -> None:
     with get_conn() as conn:
         conn.executescript(
             """
+            -- Async forecast/causal/driver jobs, persisted so a poll survives a
+            -- process restart or dev hot-reload (the in-memory _JOBS dict is lost
+            -- on reload; without this GET /forecasts/jobs/{id} would 404).
+            CREATE TABLE IF NOT EXISTS forecast_jobs (
+                job_id     TEXT PRIMARY KEY,
+                payload    TEXT,
+                updated_at TEXT
+            );
             CREATE TABLE IF NOT EXISTS datasets (
                 id             TEXT PRIMARY KEY,
                 file_name      TEXT,
@@ -2703,8 +2770,7 @@ def start_forecast_run(payload: Optional[Dict[str, Any]] = None) -> Dict[str, An
         "error": None,
         "message": "Queued…",
     }
-    with _JOBS_LOCK:
-        _JOBS[job_id] = job
+    _job_create(job)
 
     threading.Thread(
         target=_forecast_worker,
@@ -2771,7 +2837,13 @@ def forecast_algorithms() -> Dict[str, Any]:
     return {
         "strategyInfo": pack(si),
         "additionalAlgorithms": pack(aa),
-        "recommended": ["moe", "global_lgbm", "prophet", "theta", "holt_winters", "autoarima"],
+        # Phase Y.2 · Task 2 — default/Reset recommendation set. UI default only;
+        # the benchmark competition, WMAPE scoring and champion selection are
+        # unchanged (this list just seeds the checkbox selection + "Reset to
+        # recommended"). Default ON: MoE, Prophet, Global LightGBM, Local SARIMAX
+        # + Exogenous. Default OFF: AutoARIMA, Holt-Winters, Theta, Croston, TSB,
+        # Naive Seasonal.
+        "recommended": ["moe", "prophet", "global_lgbm", "local_sarimax_promo"],
         "selectable": [
             "moe", "global_lgbm", "croston_sba", "local_sarimax_promo", "ensemble_local",
             "global_lgbm_full", "naive_zero", "prophet", "autoarima", "holt_winters",
@@ -2963,8 +3035,7 @@ def start_single_sku_run(payload: Optional[Dict[str, Any]] = None) -> Dict[str, 
         "runId": None, "startedAt": now_iso(), "completedAt": None, "error": None,
         "message": "Queued…", "mode": "single_sku",
     }
-    with _JOBS_LOCK:
-        _JOBS[job_id] = job
+    _job_create(job)
     threading.Thread(
         target=_single_sku_worker,
         args=(job_id, ds, sku, periods, models, owner),
@@ -3059,104 +3130,182 @@ def _apply_causal_adjustment(baseline: "pd.Series", exog: "pd.DataFrame",
     return whatif
 
 
-def _whatif_worker(job_id: str, ds: Dict[str, Any], sku: str, periods: int,
-                   models: List[str], adjustments: List[Dict[str, Any]],
-                   start: Optional[str], end: Optional[str],
-                   causal_ate: Optional[float] = None) -> None:
-    _job_update(job_id, status="running", progress=10, startedAt=now_iso(),
-                message=f"Fitting {sku}…")
+def _stored_baseline_series(ds_id: str, sku: str):
+    """Phase Y.15 — the SKU's baseline forecast from the EXISTING stored forecast
+    run (forecasts.detail_json). NO model is re-fit / re-run. Returns
+    (future_forecast_series, champion_label) or (None, champion_label/None)."""
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT model, detail_json FROM forecasts WHERE dataset_id = ? AND sku = ? "
+                "ORDER BY generated_at DESC LIMIT 1", (ds_id, str(sku))).fetchone()
+        if not row or not row["detail_json"]:
+            return None, None
+        det = json.loads(row["detail_json"])
+        champ = str(det.get("strategyLabel") or row["model"] or "")
+        pts = det.get("series", []) or []
+        # The FUTURE forecast = points carrying a forecast and no actual; fall back
+        # to all forecast-bearing points if the series isn't split that way.
+        fut = [(p.get("date"), p.get("forecast")) for p in pts
+               if p.get("forecast") is not None and p.get("date") and p.get("actual") is None]
+        if not fut:
+            fut = [(p.get("date"), p.get("forecast")) for p in pts
+                   if p.get("forecast") is not None and p.get("date")]
+        if not fut:
+            return None, champ
+        idx = pd.DatetimeIndex([pd.to_datetime(d) for d, _ in fut])
+        s = pd.Series([float(v) for _, v in fut], index=idx).sort_index()
+        return s, champ
+    except Exception as exc:
+        logging.warning("stored baseline read failed: %s", exc)
+        return None, None
+
+
+def _scenario_exog_features(ds: Dict[str, Any], sku: str) -> List[str]:
+    """Adjustable numeric exogenous drivers for a SKU — mirrors the causal-features
+    detection so the What-If lever list matches the relationship graph. READ-ONLY,
+    no forecaster involved."""
     try:
         df = load_dataset_df(ds)
         df = _apply_history_window(df, ds["date_col"], _resolve_config(ds))
         date_col, sales_col, sku_col = ds["date_col"], ds["sales_col"], ds["sku_col"]
-        sub = df[df[sku_col].astype(str) == str(sku)][[date_col, sales_col]].copy()
+        sub = df[df[sku_col].astype(str) == str(sku)]
         if sub.empty:
-            raise ValueError(f"SKU '{sku}' has no history in this dataset")
-        eda = engine.TimeSeriesEDA(
-            sub, date_col=date_col, sales_col=sales_col,
-            resample_freq=_map_resample_freq(ds.get("freq")), country_code="IN",
-        )
-        _job_update(job_id, progress=45, message="Generating baseline forecast…")
-        fc = engine.TimeSeriesForecaster(eda)
-        final_forecast, best_name, best_result, _summary = fc.forecast(
-            n_periods=periods, models_to_try=models, error_threshold=20.0, use_tsfresh=False,
-        )
-        baseline = final_forecast if isinstance(final_forecast, pd.Series) else pd.Series(dtype=float)
-        exog = getattr(fc, "exog_forecast", None)
-        best_result = best_result if isinstance(best_result, dict) else {}
-        model_name = best_result.get("model_name")
-        base_model = best_result.get("model_object")
-        avail = [str(c) for c in exog.columns] if exog is not None and hasattr(exog, "columns") else []
+            return []
+        cfg = _resolve_config(ds)
+        exclude = {date_col, sales_col, sku_col}
+        cols = [c for c in (cfg.get("exogNumeric") or []) if c in sub.columns]
+        if not cols:
+            cols = [c for c in sub.columns
+                    if c not in exclude and pd.to_numeric(sub[c], errors="coerce").notna().any()]
+        return [str(c) for c in cols]
+    except Exception as exc:
+        logging.warning("scenario exog features failed: %s", exc)
+        return []
 
-        whatif: Optional[pd.Series] = None
-        message = ""
-        # Causal-adjustment path (source 16098-16113): when the caller supplies a
-        # DoWhy ATE, apply it directly to the baseline — works for ANY model.
-        used_causal = causal_ate is not None and bool(adjustments)
-        if used_causal:
-            _job_update(job_id, progress=70, message="Applying causal estimate…")
-            whatif = _apply_causal_adjustment(
-                baseline, exog, adjustments[0], causal_ate, start, end)
-            if whatif is None:
-                message = ("Causal adjustment unavailable — the lever isn't an "
-                           "exogenous feature of this forecast.")
-        supported = (
-            model_name in ("prophet", "auto_arima", "sarimax")
-            and bool(avail) and base_model is not None
-        )
-        if used_causal:
-            pass
-        elif not supported:
-            if model_name not in ("prophet", "auto_arima", "sarimax"):
-                message = (f"What-if re-forecast not supported for "
-                           f"{str(model_name).upper()}. Re-run with Prophet / "
-                           f"AutoARIMA / SARIMAX, or use causal adjustment.")
-            elif not avail:
-                message = "No adjustable exogenous features available for this SKU."
-            else:
-                message = "Base model unavailable for re-forecast."
-        elif not adjustments:
-            message = "Add at least one adjustment to simulate a scenario."
-        else:
-            _job_update(job_id, progress=70, message="Re-forecasting scenario…")
-            sx = _apply_whatif_rules(exog, adjustments, start, end)
-            n = len(exog)
+
+def _scenario_feature_sensitivity(ds: Dict[str, Any], sku: str, features: List[str]):
+    """Per-feature (signed correlation r∈[-1,1], historical mean level) derived from
+    HISTORY — a closed-form statistic used to translate a driver change into a
+    demand change WITHOUT re-running any forecast/model. READ-ONLY decomposition of
+    already-existing data (no fit/train/forecast call)."""
+    out: Dict[str, tuple] = {}
+    try:
+        df = load_dataset_df(ds)
+        df = _apply_history_window(df, ds["date_col"], _resolve_config(ds))
+        date_col, sales_col, sku_col = ds["date_col"], ds["sales_col"], ds["sku_col"]
+        sub = df[df[sku_col].astype(str) == str(sku)]
+        if sub.empty:
+            return out
+        freq = _map_resample_freq(ds.get("freq"))
+        dts = pd.to_datetime(sub[date_col], errors="coerce")
+        demand = (pd.DataFrame({"d": dts, "v": pd.to_numeric(sub[sales_col], errors="coerce")})
+                  .dropna().set_index("d")["v"].resample(freq).sum())
+        for f in features:
+            if f not in sub.columns:
+                continue
+            fser = (pd.DataFrame({"d": dts, "v": pd.to_numeric(sub[f], errors="coerce")})
+                    .dropna().set_index("d")["v"].resample(freq).mean())
+            level = float(fser.mean()) if len(fser) else None
+            r = None
+            pair = pd.concat([demand, fser.reindex(demand.index)], axis=1).dropna()
+            if (len(pair) >= 4 and float(pair.iloc[:, 1].std() or 0) > 0
+                    and float(pair.iloc[:, 0].std() or 0) > 0):
+                rr = float(pair.iloc[:, 0].corr(pair.iloc[:, 1]))
+                r = rr if np.isfinite(rr) else None
+            out[f] = (r, level)
+    except Exception as exc:
+        logging.warning("scenario feature sensitivity failed: %s", exc)
+    return out
+
+
+def _whatif_worker(job_id: str, ds: Dict[str, Any], sku: str, periods: int,
+                   models: List[str], adjustments: List[Dict[str, Any]],
+                   start: Optional[str], end: Optional[str],
+                   causal_ate: Optional[float] = None) -> None:
+    """Phase Y.15 — the scenario operates on the EXISTING forecast. It reads the
+    SKU's stored baseline forecast and applies the driver adjustments (a
+    history-derived sensitivity, or the supplied DoWhy causal effect) directly to
+    that baseline. It NEVER re-fits / re-forecasts, so EVERY champion model
+    (Holt-Winters, SARIMAX, Prophet, AutoARIMA, …) supports scenarios. The
+    original forecast is untouched."""
+    _job_update(job_id, status="running", progress=25, startedAt=now_iso(),
+                message=f"Loading existing forecast for {sku}…")
+    try:
+        ds_id = ds["id"]
+        avail = _scenario_exog_features(ds, sku)
+        baseline, champ = _stored_baseline_series(ds_id, sku)
+
+        base_template = {
+            "sku": sku, "championModel": champ or "",
+            "changeTypes": _WHATIF_CHANGE_TYPES, "availableFeatures": avail,
+            "appliedAdjustments": adjustments, "generatedAt": now_iso(),
+        }
+        if baseline is None or not len(baseline):
+            result = {**base_template, "supported": False,
+                      "message": ("No completed forecast found for this item. Run a "
+                                  "forecast first — the scenario builds on it."),
+                      "baselineTotal": 0.0, "scenarioTotal": None, "deltaUnits": None,
+                      "changePct": None, "series": [], "waterfall": []}
+            _job_update(job_id, status="completed", progress=100, completedAt=now_iso(),
+                        message="Scenario ready", result=result)
+            return
+
+        _job_update(job_id, progress=60, message="Applying driver adjustments…")
+        # Date-window mask (optional) — restrict the change to a sub-range.
+        mask = pd.Series(True, index=baseline.index)
+        if start:
+            mask &= baseline.index >= pd.to_datetime(start)
+        if end:
+            mask &= baseline.index <= pd.to_datetime(end)
+
+        applied = [a for a in adjustments if a.get("feature") in avail]
+        sens = _scenario_feature_sensitivity(ds, sku, [str(a.get("feature")) for a in applied])
+        scenario = baseline.copy().astype(float)
+        # Causal effect applies only to a single-lever scenario (parity with the
+        # Streamlit "Apply causal estimate" path); otherwise use the driver
+        # sensitivity. Either way: baseline + driver effect, NO re-forecast.
+        single_causal = causal_ate is not None and len(applied) == 1
+        contribs: List[Dict[str, Any]] = []
+        for a in applied:
+            f = str(a.get("feature"))
+            t = str(a.get("type") or "")
             try:
-                if model_name == "prophet":
-                    fut = base_model.make_future_dataframe(periods=n, freq=eda.resample_freq)
-                    fut = fut.merge(sx, left_on="ds", right_index=True, how="left").ffill().bfill()
-                    p = base_model.predict(fut)
-                    whatif = pd.Series(p["yhat"].values[-n:], index=exog.index)
-                elif model_name == "auto_arima":
-                    whatif = pd.Series(list(base_model.predict(n_periods=len(sx), X=sx)), index=sx.index)
-                elif model_name == "sarimax":
-                    whatif = pd.Series(base_model.forecast(steps=len(sx), exog=sx))
-                    whatif.index = sx.index
-            except Exception as ex:  # mirror Streamlit's "Re-forecast failed" guard
-                message = f"Re-forecast failed: {ex}"
-                whatif = None
+                v = float(a.get("value"))
+            except (TypeError, ValueError):
+                continue
+            r, level = sens.get(f, (None, None))
+            if t == "Percentage Change":
+                rel = v / 100.0
+            elif t == "Constant Change":
+                rel = (v / level) if level else 0.0
+            else:  # "Set to New Value"
+                rel = ((v - level) / level) if level else 0.0
+            impact = pd.Series(0.0, index=baseline.index)
+            if single_causal and np.isfinite(float(causal_ate)) and level is not None:
+                impact.loc[mask] = (level * rel) * float(causal_ate)
+            else:
+                impact.loc[mask] = baseline.loc[mask] * ((r or 0.0) * rel)
+            scenario = scenario + impact
+            contribs.append({"label": f, "value": clean_float(impact.sum()), "type": "delta"})
 
-        base_total = clean_float(baseline.sum()) if len(baseline) else 0.0
-        scen_total = clean_float(whatif.sum()) if (whatif is not None and len(whatif)) else None
-        delta = (scen_total - base_total) if scen_total is not None else None
-        pct = (delta / base_total * 100) if (delta is not None and base_total) else (
-            0.0 if delta is not None else None)
-        series: List[Dict[str, Any]] = []
-        for idx, bval in baseline.items():
-            pt: Dict[str, Any] = {"date": iso_date(idx), "baseline": clean_float(bval)}
-            if whatif is not None and idx in getattr(whatif, "index", []):
-                pt["scenario"] = clean_float(whatif.loc[idx])
-            series.append(pt)
+        scenario = scenario.clip(lower=0.0)
+        base_total = clean_float(baseline.sum())
+        scen_total = clean_float(scenario.sum())
+        delta = scen_total - base_total
+        pct = (delta / base_total * 100.0) if base_total else 0.0
+        series = [{"date": iso_date(idx), "baseline": clean_float(b),
+                   "scenario": clean_float(scenario.loc[idx])} for idx, b in baseline.items()]
+        waterfall = ([{"label": "Baseline", "value": base_total, "type": "base"}]
+                     + contribs
+                     + [{"label": "Scenario", "value": scen_total, "type": "total"}])
+        message = "" if applied else "Enable at least one driver to simulate a change."
 
         result = {
-            "sku": sku, "championModel": best_name,
-            "supported": bool(whatif is not None), "message": message,
-            "changeTypes": _WHATIF_CHANGE_TYPES,
-            "availableFeatures": avail, "appliedAdjustments": adjustments,
+            **base_template, "supported": True, "message": message,
             "baselineTotal": base_total, "scenarioTotal": scen_total,
-            "deltaUnits": clean_float(delta) if delta is not None else None,
-            "changePct": clean_float(pct) if pct is not None else None,
-            "series": series, "generatedAt": now_iso(),
+            "deltaUnits": clean_float(delta), "changePct": clean_float(pct),
+            "series": series, "waterfall": waterfall,
         }
         _job_update(job_id, status="completed", progress=100, completedAt=now_iso(),
                     message="Scenario ready", result=result)
@@ -3199,11 +3348,16 @@ def run_scenario(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     # deterministic, so re-fitting the same models reproduces the same champion
     # and baseline). Streamlit's what-if sits on the session forecast; this is
     # the stateless equivalent. An explicit caller override still wins.
+    ds = dict(load_dataset_row(ds_id))
     prior = _latest_single_sku_run(_current_uid(), ds_id, sku)
     explicit_models = [m for m in (payload.get("models") or []) if m in _SS_MODELS_ALLOWED]
     prior_models = [m for m in ((prior or {}).get("models") or []) if m in _SS_MODELS_ALLOWED]
     models = explicit_models or prior_models or list(_SS_MODELS_DEFAULT)
-    periods = int(payload.get("periods") or (prior or {}).get("periods") or 12)
+    # Phase Y.11 — the scenario has no horizon input; it reuses the EXISTING
+    # forecast horizon automatically: the prior single-SKU run's horizon, else the
+    # saved config horizon, else 12. An explicit caller override still wins.
+    periods = int(payload.get("periods") or (prior or {}).get("periods")
+                  or _resolve_config(ds).get("horizon") or 12)
     adjustments = payload.get("adjustments") or []
     start = payload.get("start")
     end = payload.get("end")
@@ -3214,7 +3368,6 @@ def run_scenario(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         causal_ate = float(causal_ate) if causal_ate is not None else None
     except (TypeError, ValueError):
         causal_ate = None
-    ds = dict(load_dataset_row(ds_id))
 
     job_id = f"job_{uuid.uuid4().hex[:12]}"
     job = {
@@ -3223,8 +3376,7 @@ def run_scenario(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         "runId": None, "startedAt": now_iso(), "completedAt": None, "error": None,
         "message": "Queued…", "mode": "scenario", "result": None,
     }
-    with _JOBS_LOCK:
-        _JOBS[job_id] = job
+    _job_create(job)
     threading.Thread(
         target=_whatif_worker,
         args=(job_id, ds, sku, periods, models, adjustments, start, end, causal_ate),
@@ -3348,8 +3500,15 @@ def _scenario_causal_features(ds: Dict[str, Any], sku: str):
               .resample(freq).mean().reset_index())
         new = [c for c in exog_cfg if c not in features_df.columns]
         if new:
-            features_df = features_df.merge(ex[["date"] + new], on="date", how="left")
-            features_df[new] = features_df[new].ffill().fillna(0)
+            # Phase Y.17 — align on calendar PERIOD, not the exact timestamp: the
+            # engineered frame is month-START while resample(freq) is month-END, so
+            # an exact-date join misses every row → the exog columns become NaN →
+            # constant 0, which silently zeroed every causal/driver estimate. Period
+            # keys (e.g. 2022-01) match regardless of the anchor, for any frequency.
+            features_df["_p"] = features_df["date"].dt.to_period(freq)
+            ex["_p"] = ex["date"].dt.to_period(freq)
+            features_df = features_df.merge(ex[["_p"] + new], on="_p", how="left").drop(columns="_p")
+            features_df[new] = features_df[new].ffill().bfill()
             exog_added = new
     potential = [c for c in features_df.columns if c not in ["date", outcome]]
     return features_df, outcome, potential, exog_added
@@ -3364,6 +3523,22 @@ def _causal_worker(job_id: str, ds: Dict[str, Any], sku: str,
     try:
         features_df, outcome, potential, exog_added = _scenario_causal_features(ds, sku)
         confounders = [c for c in confounders if c in potential and c not in treatments]
+        # Phase Y.17 · Task 5 — advanced settings are OPTIONAL. When the user leaves
+        # confounders empty, auto-adjust for every OTHER driver (calendar / lag /
+        # rolling / seasonal / exog), excluding the chosen treatments, instruments
+        # and effect modifiers. Mirrors the Streamlit force-exog default so DoWhy
+        # runs with only SKU + treatment selected.
+        if not confounders:
+            excluded = set(treatments) | set(instruments or []) | set(effect_modifiers or [])
+            # Mirror the Streamlit force-exog default: adjust for the OTHER
+            # exogenous business drivers (price/promo/holiday/…) plus LIGHT
+            # seasonality (month/quarter). We deliberately do NOT auto-add the
+            # lag_*/rolling_* features (derived from the OUTCOME → over-control) or
+            # the full calendar/Fourier/holiday-distance set (collinear and
+            # over-parameterized for short histories) — both collapse the lever's
+            # coefficient toward a spurious zero.
+            seasonal = [c for c in ("month", "quarter") if c in potential]
+            confounders = [c for c in (list(exog_added) + seasonal) if c not in excluded]
         _job_update(job_id, progress=45, message="Measuring causal impact…")
         out = scenario_engine.estimate_causal_effects(
             features_df, outcome, treatments, confounders, instruments,
@@ -3396,24 +3571,33 @@ def _drivers_worker(job_id: str, ds: Dict[str, Any], sku: str, use_all_conf: boo
 @app.get("/scenarios/causal/features")
 def scenario_causal_features(datasetId: Optional[str] = Query(None),
                              skuId: Optional[str] = Query(None)) -> Dict[str, Any]:
-    """Candidate levers (potential treatments/confounders) for a SKU + DoWhy
-    availability. Mirrors how render_causal_tab derives `potential`."""
-    if not scenario_engine.DOWHY_AVAILABLE:
-        return {"available": False, "columns": [], "outcome": None,
-                "message": "Install `dowhy` and `graphviz` for causal analysis."}
+    """Candidate levers (potential treatments/confounders/effect modifiers) for a
+    SKU, plus whether DoWhy effect ESTIMATION is available.
+
+    Phase Y.11 — the candidate columns come from feature engineering
+    (`_scenario_causal_features`), which does NOT need DoWhy, so they are returned
+    even when dowhy/graphviz are absent. This keeps the causal STRUCTURE graph and
+    the variable selectors working; only the numeric effect estimation requires
+    DoWhy, which `available` reports. (Previously this returned no columns when
+    DoWhy was missing, which blanked the entire causal tab.)"""
+    dowhy_ok = bool(scenario_engine.DOWHY_AVAILABLE)
+    estimation_msg = "" if dowhy_ok else (
+        "Causal effect estimation needs `dowhy` + `graphviz` on the server. The "
+        "causal structure is still shown; numeric effect values are unavailable.")
     ds_id = datasetId or latest_dataset_id()
     sku = str(skuId or "").strip()
     if ds_id is None or not sku:
-        return {"available": True, "columns": [], "outcome": None,
-                "exogAccountedFor": [], "message": "Select a forecast level first."}
+        return {"available": dowhy_ok, "columns": [], "outcome": None,
+                "exogAccountedFor": [],
+                "message": estimation_msg or "Select a forecast level first."}
     try:
         ds = dict(load_dataset_row(ds_id))
         _features, outcome, potential, exog_added = _scenario_causal_features(ds, sku)
-        return {"available": True, "columns": potential, "outcome": outcome,
-                "exogAccountedFor": exog_added, "message": ""}
+        return {"available": dowhy_ok, "columns": potential, "outcome": outcome,
+                "exogAccountedFor": exog_added, "message": estimation_msg}
     except Exception as exc:
         logging.warning("scenario_causal_features failed: %s", exc)
-        return {"available": True, "columns": [], "outcome": None,
+        return {"available": dowhy_ok, "columns": [], "outcome": None,
                 "exogAccountedFor": [], "message": str(exc)[:200]}
 
 
@@ -3447,8 +3631,7 @@ def run_causal(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
            "skuCount": 0, "total": 1, "datasetId": ds_id, "runId": None,
            "startedAt": now_iso(), "completedAt": None, "error": None,
            "message": "Queued…", "mode": "causal", "result": None}
-    with _JOBS_LOCK:
-        _JOBS[job_id] = job
+    _job_create(job)
     threading.Thread(
         target=_causal_worker,
         args=(job_id, ds, sku, treatments, confounders, instruments,
@@ -3477,11 +3660,89 @@ def run_causal_drivers(payload: Optional[Dict[str, Any]] = None) -> Dict[str, An
            "skuCount": 0, "total": 1, "datasetId": ds_id, "runId": None,
            "startedAt": now_iso(), "completedAt": None, "error": None,
            "message": "Queued…", "mode": "drivers", "result": None}
-    with _JOBS_LOCK:
-        _JOBS[job_id] = job
+    _job_create(job)
     threading.Thread(target=_drivers_worker, args=(job_id, ds, sku, use_all_conf),
                      daemon=True).start()
     return dict(job)
+
+
+@app.post("/scenarios/causal/graph")
+def scenario_causal_graph(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Read-only causal DAG ({nodes, edges}) for the CURRENT selection.
+
+    Pure visualization parity with the Streamlit `build_causal_graph`: it mirrors
+    the structure DoWhy is GIVEN — confounders → treatment & outcome; instruments
+    → treatment; effect modifiers → outcome; treatment → outcome. NO CausalModel
+    is built and NO effect is estimated, so this changes no causal mathematics. It
+    works even without dowhy/graphviz installed (the structure is deterministic
+    from the variable names). The outcome is the dataset's demand/sales column."""
+    payload = payload or {}
+    ds_id = payload.get("datasetId") or latest_dataset_id()
+    treatments = list(dict.fromkeys(
+        str(t) for t in (payload.get("treatments") or []) if str(t).strip()))
+    confounders = [str(c) for c in (payload.get("confounders") or []) if str(c).strip()]
+    instruments = [str(c) for c in (payload.get("instruments") or []) if str(c).strip()]
+    effect_modifiers = [str(c) for c in (payload.get("effectModifiers") or []) if str(c).strip()]
+
+    # Resolve the outcome (demand) column — lightweight, no feature engineering.
+    outcome: Optional[str] = None
+    if ds_id is not None:
+        try:
+            outcome = str(dict(load_dataset_row(ds_id)).get("sales_col") or "") or None
+        except Exception:
+            outcome = None
+
+    variables = {"treatments": treatments, "outcome": outcome, "confounders": confounders,
+                 "instruments": instruments, "effectModifiers": effect_modifiers}
+    if not treatments or not outcome:
+        return {"available": True, "outcome": outcome, "nodes": [], "edges": [],
+                "dotGraph": "", "variables": variables}
+
+    # A variable plays ONE role; treatments + outcome win, then first-come.
+    used = set(treatments) | {outcome}
+
+    def _dedupe(items: List[str]) -> List[str]:
+        out: List[str] = []
+        for x in dict.fromkeys(items):
+            if x and x not in used:
+                out.append(x)
+                used.add(x)
+        return out
+
+    confounders = _dedupe(confounders)
+    instruments = _dedupe(instruments)
+    effect_modifiers = _dedupe(effect_modifiers)
+
+    nodes = [{"id": outcome, "label": outcome, "role": "outcome"}]
+    nodes += [{"id": t, "label": t, "role": "treatment"} for t in treatments]
+    nodes += [{"id": c, "label": c, "role": "confounder"} for c in confounders]
+    nodes += [{"id": z, "label": z, "role": "instrument"} for z in instruments]
+    nodes += [{"id": em, "label": em, "role": "effect_modifier"} for em in effect_modifiers]
+
+    edges: List[Dict[str, str]] = []
+    for t in treatments:
+        edges.append({"source": t, "target": outcome})
+        for c in confounders:
+            edges.append({"source": c, "target": t})
+        for z in instruments:
+            edges.append({"source": z, "target": t})
+    for c in confounders:
+        edges.append({"source": c, "target": outcome})
+    for em in effect_modifiers:
+        edges.append({"source": em, "target": outcome})
+
+    # Best-effort DOT parity (same helper the Streamlit app used); never fatal.
+    dot = ""
+    try:
+        dot = scenario_engine.build_causal_graph(
+            treatments, outcome, confounders, instruments, effect_modifiers) or ""
+    except Exception:
+        dot = ""
+
+    variables = {"treatments": treatments, "outcome": outcome, "confounders": confounders,
+                 "instruments": instruments, "effectModifiers": effect_modifiers}
+    return {"available": True, "outcome": outcome, "nodes": nodes, "edges": edges,
+            "dotGraph": dot, "variables": variables}
 
 
 def _resolve_run(run_id: Optional[str], dataset_id: Optional[str]):
@@ -4192,6 +4453,94 @@ def explainability_horizon(forecast_level: str,
     except Exception as exc:
         logging.warning("explainability_horizon failed: %s", exc)
         return {"available": False, "entity": forecast_level, "periods": []}
+
+
+@app.get("/eda/correlation")
+def get_eda_correlation(
+    datasetId: Optional[str] = Query(None),
+    sku: Optional[str] = Query(None),
+) -> Dict[str, Any]:
+    """Read-only Exogenous Correlation matrix for the Exogenous-Correlation heatmap.
+
+    Builds the SAME engineered feature panel the rest of the app uses (the engine's
+    TimeSeriesEDA._engineer_features → calendar / month_sin·cos / lag_* / rolling_*
+    / is_holiday, plus the configured numeric exogenous drivers merged by date),
+    then returns a pairwise Pearson correlation matrix over those numeric drivers.
+
+    READ-ONLY: it reuses existing feature engineering for VISUALIZATION only — no
+    forecast is run, retrained, or changed, and no forecasting math is duplicated.
+    The demand/outcome column is excluded (this is the *driver* correlation)."""
+    ds_id = datasetId or latest_dataset_id()
+    _empty = {"available": True, "columns": [], "matrix": [], "outcome": None}
+    if ds_id is None:
+        return dict(_empty)
+    try:
+        ds = dict(load_dataset_row(ds_id))
+        cfg = _resolve_config(ds)
+        date_col, sales_col, sku_col = ds["date_col"], ds["sales_col"], ds["sku_col"]
+        df = load_dataset_df(ds)
+        df = _apply_history_window(df, date_col, cfg)
+        work = df if not sku else df[df[sku_col].astype(str) == str(sku)]
+        if work.empty:
+            return dict(_empty)
+
+        # Engineered feature panel (calendar + lag/rolling/holiday), built exactly
+        # like the causal/forecast paths — aggregated to one series per date.
+        freq = _map_resample_freq(ds.get("freq"))
+        eda = engine.TimeSeriesEDA(
+            work[[date_col, sales_col]], date_col=date_col, sales_col=sales_col,
+            resample_freq=freq, country_code=cfg.get("holidayCountry") or "IN",
+        )
+        feats = eda._engineer_features()
+        feats["date"] = pd.to_datetime(feats["date"], errors="coerce")
+
+        # Merge the configured numeric exogenous drivers (price/promo/discount/…),
+        # aggregated by date, so uploaded drivers sit alongside engineered ones.
+        exclude_raw = {date_col, sales_col, sku_col}
+        exog_cols = [c for c in (cfg.get("exogNumeric") or []) if c in work.columns]
+        if not exog_cols:
+            exog_cols = [
+                c for c in work.columns
+                if c not in exclude_raw and pd.to_numeric(work[c], errors="coerce").notna().any()
+            ]
+        if exog_cols:
+            ex = pd.DataFrame({"date": pd.to_datetime(work[date_col], errors="coerce")})
+            for c in exog_cols:
+                ex[c] = pd.to_numeric(work[c], errors="coerce").values
+            ex = (ex.dropna(subset=["date"]).groupby("date").mean()
+                  .resample(freq).mean().reset_index())
+            new = [c for c in exog_cols if c not in feats.columns]
+            if new:
+                # Align on calendar PERIOD, not the exact timestamp: the engineered
+                # frame is anchored to month-START while resample(freq) yields
+                # month-END, so an exact-date join matches nothing (→ all-NaN →
+                # the driver gets dropped). Period keys (e.g. 2022-01) match
+                # regardless of the anchor, for any frequency (M/W/D/Q/Y).
+                feats["_p"] = feats["date"].dt.to_period(freq)
+                ex["_p"] = ex["date"].dt.to_period(freq)
+                feats = feats.merge(ex[["_p"] + new], on="_p", how="left").drop(columns="_p")
+                feats[new] = feats[new].ffill().bfill()
+
+        # Candidate drivers = every numeric column except date + the outcome. The
+        # engineered panel renames the target to 'sales'; drop both it and the
+        # configured sales column if present.
+        drop = {"date", "sales", sales_col}
+        cand = [c for c in feats.columns if c not in drop]
+        num = feats[cand].apply(pd.to_numeric, errors="coerce")
+        # Drop all-NaN / zero-variance columns (a flat column has no correlation).
+        keep = [c for c in cand if num[c].notna().sum() >= 3 and float(num[c].std() or 0) > 0]
+        if len(keep) < 2:
+            return {"available": True, "columns": keep, "matrix": [[1.0]] if keep else [],
+                    "outcome": sales_col}
+
+        corr = num[keep].corr(method="pearson")
+        matrix = [[(None if pd.isna(v) else round(float(v), 4)) for v in row]
+                  for row in corr.values.tolist()]
+        return {"available": True, "columns": list(corr.columns),
+                "matrix": matrix, "outcome": sales_col}
+    except Exception as exc:
+        logging.warning("get_eda_correlation failed: %s", exc)
+        return dict(_empty)
 
 
 @app.get("/eda")
@@ -5248,15 +5597,26 @@ def patch_submission(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]
                 segment=fl.get("segment"), sku=fl.get("sku"),
                 overridden_only=bool(fl.get("overriddenOnly")), wmape=float(fl.get("wmapeThreshold") or 0),
             )
+            # Phase Y.3 · Task 1 — the planner UI requires an override reason for
+            # value-changing bulk ops; record it on every affected row so no
+            # override is stored without a reason. (Reason is optional here only
+            # for backward compatibility; the UI always supplies it.)
+            bulk_reason = str(bulk.get("reason")).strip() if bulk.get("reason") else None
             for r in target:
                 if op == "uplift":
                     v = float(bulk.get("value") or 0)
                     new = round(max(0.0, (r["submitted_forecast"] or 0) * (1 + v / 100)), 1)
-                    conn.execute("UPDATE submission_rows SET submitted_forecast = ? WHERE id = ?", (new, r["id"]))
+                    if bulk_reason:
+                        conn.execute("UPDATE submission_rows SET submitted_forecast = ?, reason = ? WHERE id = ?", (new, bulk_reason, r["id"]))
+                    else:
+                        conn.execute("UPDATE submission_rows SET submitted_forecast = ? WHERE id = ?", (new, r["id"]))
                 elif op == "copy_ly":
                     ly = r["last_year_same_month"]
                     if ly is not None:
-                        conn.execute("UPDATE submission_rows SET submitted_forecast = ? WHERE id = ?", (round(ly, 1), r["id"]))
+                        if bulk_reason:
+                            conn.execute("UPDATE submission_rows SET submitted_forecast = ?, reason = ? WHERE id = ?", (round(ly, 1), bulk_reason, r["id"]))
+                        else:
+                            conn.execute("UPDATE submission_rows SET submitted_forecast = ? WHERE id = ?", (round(ly, 1), r["id"]))
                 elif op == "reset":
                     conn.execute(
                         "UPDATE submission_rows SET submitted_forecast = ?, reason = ?, notes = '' WHERE id = ?",
