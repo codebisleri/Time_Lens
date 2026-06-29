@@ -67,19 +67,78 @@ except ImportError:
     build_temporal_features_for_index = None
     CALENDAR_DETERMINISTIC_COLUMNS = frozenset()
 
-# Optional, gated imports
-try:
-    import lightgbm as lgb
-except ImportError:
-    lgb = None
-try:
-    from prophet import Prophet
-except ImportError:
-    Prophet = None
-try:
-    import pmdarima as pm
-except ImportError:
-    pm = None
+# Optional, HEAVY gated imports — LAZY. find_spec() decides availability WITHOUT
+# importing, and the real `import` is deferred to first attribute access. This
+# keeps pmdarima (~3.5s) / prophet (~2.0s) / lightgbm (~1.8s) / xgboost (~1.7s)
+# OUT of module-load and ProcessPool-worker spawn — they load only when their
+# algorithm actually runs. Sentinels (`X is None`) and direct `X.attr(...)` use
+# are preserved; bridge forecasters that re-import these locally are unaffected.
+import importlib as _importlib
+import importlib.util as _importlib_util
+
+
+class _LazyModule:
+    """Defers `import <name>` until first attribute access (lightgbm/pmdarima/
+    xgboost/torch). Truthy (not None) when the lib is installed."""
+    __slots__ = ('_lm_name', '_lm_mod')
+
+    def __init__(self, name):
+        object.__setattr__(self, '_lm_name', name)
+        object.__setattr__(self, '_lm_mod', None)
+
+    def _lm_load(self):
+        m = object.__getattribute__(self, '_lm_mod')
+        if m is None:
+            m = _importlib.import_module(object.__getattribute__(self, '_lm_name'))
+            object.__setattr__(self, '_lm_mod', m)
+        return m
+
+    def __getattr__(self, attr):
+        return getattr(self._lm_load(), attr)
+
+
+class _LazyCallable:
+    """Defers `from <module> import <attr>` (a class/fn) until first call or
+    attribute access (prophet.Prophet / chronos.ChronosPipeline)."""
+    __slots__ = ('_lc_mod', '_lc_attr', '_lc_obj')
+
+    def __init__(self, module, attr):
+        object.__setattr__(self, '_lc_mod', module)
+        object.__setattr__(self, '_lc_attr', attr)
+        object.__setattr__(self, '_lc_obj', None)
+
+    def _lc_load(self):
+        o = object.__getattribute__(self, '_lc_obj')
+        if o is None:
+            o = getattr(_importlib.import_module(object.__getattribute__(self, '_lc_mod')),
+                        object.__getattribute__(self, '_lc_attr'))
+            object.__setattr__(self, '_lc_obj', o)
+        return o
+
+    def __call__(self, *a, **k):
+        return self._lc_load()(*a, **k)
+
+    def __getattr__(self, n):
+        return getattr(self._lc_load(), n)
+
+
+def _lazy_module(name):
+    try:
+        return _LazyModule(name) if _importlib_util.find_spec(name) is not None else None
+    except Exception:
+        return None
+
+
+def _lazy_callable(module, attr):
+    try:
+        return _LazyCallable(module, attr) if _importlib_util.find_spec(module) is not None else None
+    except Exception:
+        return None
+
+
+lgb = _lazy_module('lightgbm')        # global LightGBM (loads on first use)
+Prophet = _lazy_callable('prophet', 'Prophet')
+pm = _lazy_module('pmdarima')         # AutoARIMA (loads on first auto_arima)
 try:
     from chronos import ChronosPipeline
     import torch
@@ -101,10 +160,7 @@ except ImportError:
     holidays = None
 
 # Additional optional dependencies for merged features (from app_96)
-try:
-    import xgboost as xgb
-except ImportError:
-    xgb = None
+xgb = _lazy_module('xgboost')         # XGBoost residual / quantile (loads on use)
 try:
     from dtaidistance import dtw
 except ImportError:
@@ -134,112 +190,70 @@ except ImportError:
     extract_features = None
     MinimalFCParameters = None
 
-# ââ Deep-learning Mixture-of-Experts (Keras) â optional, ENV-GATED ââââ
-# Ported from app_96.py. TensorFlow is a HEAVY, frequently-broken dependency:
-# on a mismatched numpy/ABI (e.g. TF 2.20 + numpy 1.24 here) `import tensorflow`
-# can not only raise but DEADLOCK the C++ runtime ("mutex Lock blocking"),
-# which would hang app startup. So we DO NOT import it by default. Set
-# TIMELENS_ENABLE_DL_MOE=1 (with a working TF) to activate the Deep MoE; until
-# then `tf is None` and every DL-MoE entry point degrades to Holt-Winters.
-# (Same pattern as the TIMELENS_ENABLE_NEURAL gate used for the LSTM expert.)
+# ââ Deep-learning Mixture-of-Experts (Keras) â ENABLED by default ââââ
+# Ported from app_96.py. TensorFlow is a HEAVY dependency and HISTORICALLY was
+# import-gated OFF because a mismatched numpy/ABI (e.g. TF 2.20 + numpy 1.24)
+# could not only raise but DEADLOCK the C++ runtime ("mutex Lock blocking") and
+# hang startup. That risk is now resolved: requirements.txt pins
+# `tensorflow-cpu==2.15.1` (Keras 2 API, native Windows/py3.11 CPU wheel,
+# numpy>=1.23.5,<2.0 â so the pinned numpy==1.24.3 / pmdarima ABI is preserved).
+# So we now ATTEMPT the import by default. Set TIMELENS_ENABLE_DL_MOE=0 to
+# force-disable (e.g. if a future TF/numpy upgrade reintroduces the ABI hang).
+# A genuine import failure (TF absent/broken) still falls through to `tf = None`
+# â every DL-MoE entry point then degrades to Holt-Winters, exactly as before.
 tf = None
-_DLMOE_FLAG = os.environ.get('TIMELENS_ENABLE_DL_MOE', '').strip().lower()
-if _DLMOE_FLAG in ('1', 'true', 'yes', 'on'):
+# Deferred Deep MoE (TensorFlow) handles — populated by _ensure_dlmoe_tf() on the
+# FIRST forecast_dl_moe() call, NOT at import. This keeps TensorFlow (heavy:
+# ~325 MB / ~5 s) out of engine / backend / API / ProcessPool-worker /
+# forecast_one_sku startup, so the common case (Deep MoE not routed in) never
+# pays for it. The network classes live in dlmoe_net.py; importing THAT module is
+# the only place `import tensorflow` happens.
+Adam = None              # type: ignore
+create_sequences = None  # type: ignore
+TimeSeriesMoE = None     # type: ignore
+_DLMOE_TF_TRIED = False
+
+
+def _dlmoe_tf_available() -> bool:
+    """Cheap "could TF load?" probe for UI / availability checks — does NOT import
+    TensorFlow. True iff the enable flag is on AND the `tensorflow` package is
+    importable (or already loaded)."""
+    if os.environ.get('TIMELENS_ENABLE_DL_MOE', '1').strip().lower() in ('0', 'false', 'no', 'off'):
+        return False
+    if tf is not None:
+        return True
     try:
-        import tensorflow as tf  # noqa: F401
-        from tensorflow.keras.models import Model as _KerasModel
-        from tensorflow.keras.layers import (
-            Layer, Dense, LayerNormalization, MultiHeadAttention)
-        from tensorflow.keras.optimizers import Adam
+        import importlib.util
+        return importlib.util.find_spec('tensorflow') is not None
     except Exception:
-        tf = None
+        return False
 
-if tf is not None:
-    def create_sequences(data: np.ndarray, input_len: int,
-                         output_len: int) -> Tuple[np.ndarray, np.ndarray]:
-        """Sliding-window (X, y) builder. X carries all features; y is the
-        target column (index 0) over the next `output_len` steps."""
-        X, y = [], []
-        for i in range(len(data) - input_len - output_len + 1):
-            X.append(data[i:(i + input_len), :])
-            y.append(data[(i + input_len):(i + input_len + output_len), 0])
-        return np.array(X), np.array(y)
 
-    class FourierLayer(Layer):
-        """Seasonality expert front-end: maps time indices to sin/cos harmonics."""
-        def __init__(self, period, k, **kwargs):
-            super(FourierLayer, self).__init__(**kwargs)
-            self.period = period
-            self.k = k
-
-        def call(self, inputs):
-            time = tf.cast(inputs, tf.float32)
-            harmonics = []
-            for i in range(1, self.k + 1):
-                harmonics.append(tf.sin(2 * np.pi * i * time / self.period))
-                harmonics.append(tf.cos(2 * np.pi * i * time / self.period))
-            return tf.stack(harmonics, axis=-1)
-
-    class TransformerBlock(Layer):
-        """Dynamic expert: multi-head self-attention + feed-forward residual block."""
-        def __init__(self, embed_dim, num_heads, ff_dim, rate=0.1, **kwargs):
-            super(TransformerBlock, self).__init__(**kwargs)
-            self.att = MultiHeadAttention(num_heads=num_heads, key_dim=embed_dim)
-            self.ffn = tf.keras.Sequential(
-                [Dense(ff_dim, activation="relu"), Dense(embed_dim)])
-            self.layernorm1 = LayerNormalization(epsilon=1e-6)
-            self.layernorm2 = LayerNormalization(epsilon=1e-6)
-            self.dropout1 = tf.keras.layers.Dropout(rate)
-            self.dropout2 = tf.keras.layers.Dropout(rate)
-
-        def call(self, inputs, training=False):
-            attn_output = self.att(inputs, inputs)
-            attn_output = self.dropout1(attn_output, training=training)
-            out1 = self.layernorm1(inputs + attn_output)
-            ffn_output = self.ffn(out1)
-            ffn_output = self.dropout2(ffn_output, training=training)
-            return self.layernorm2(out1 + ffn_output)
-
-    class TimeSeriesMoE(_KerasModel):
-        """Deep MoE: trend (Dense) + seasonality (Fourier) + dynamic (Transformer)
-        experts combined by a softmax gating network that learns input-dependent
-        weights per forecast step."""
-        def __init__(self, input_len, output_len, num_features, num_experts=3,
-                     period=7, k=3, embed_dim=32, num_heads=4, **kwargs):
-            super(TimeSeriesMoE, self).__init__(**kwargs)
-            self.input_len = input_len
-            self.output_len = output_len
-            self.num_features = num_features
-            self.num_experts = num_experts
-            self.input_projection = Dense(embed_dim)
-            self.trend_expert = tf.keras.Sequential(
-                [tf.keras.layers.Flatten(), Dense(output_len)], name="trend_expert")
-            self.seasonality_expert = tf.keras.Sequential(
-                [FourierLayer(period=period, k=k), tf.keras.layers.Flatten(),
-                 Dense(output_len)], name="seasonality_expert")
-            self.dynamic_expert = tf.keras.Sequential(
-                [TransformerBlock(embed_dim=embed_dim, num_heads=num_heads,
-                                  ff_dim=embed_dim * 2),
-                 tf.keras.layers.Flatten(), Dense(output_len)], name="dynamic_expert")
-            self.experts = [self.trend_expert, self.seasonality_expert,
-                            self.dynamic_expert]
-            self.gating_network = tf.keras.Sequential(
-                [tf.keras.layers.Flatten(), Dense(64, activation='relu'),
-                 Dense(num_experts, activation='softmax')], name="gating_network")
-
-        def call(self, inputs):
-            gating_weights = self.gating_network(inputs)
-            trend_out = self.experts[0](inputs)
-            time_indices = tf.range(0, self.input_len, 1, dtype=tf.float32)
-            time_indices_seq = tf.reshape(time_indices, (1, self.input_len, 1))
-            batch_time_indices = tf.tile(time_indices_seq,
-                                         [tf.shape(inputs)[0], 1, 1])
-            seasonality_out = self.experts[1](batch_time_indices)
-            projected_inputs = self.input_projection(inputs)
-            dynamic_out = self.experts[2](projected_inputs)
-            stacked = tf.stack([trend_out, seasonality_out, dynamic_out], axis=1)
-            weighted = tf.expand_dims(gating_weights, axis=-1) * stacked
-            return tf.reduce_sum(weighted, axis=1)
+def _ensure_dlmoe_tf() -> bool:
+    """LAZILY load TensorFlow + the Deep MoE network — invoked only when
+    forecast_dl_moe() actually runs (dl_moe routed into a SKU's pool). Idempotent:
+    imports once, caches handles (tf / Adam / create_sequences / TimeSeriesMoE) in
+    module globals; on a genuine failure (TF absent/broken, or
+    TIMELENS_ENABLE_DL_MOE=0) returns False so every DL-MoE entry point degrades
+    to Holt-Winters, exactly as before. Changes only WHEN TensorFlow loads — no
+    forecasting, routing, or numerical change."""
+    global tf, Adam, create_sequences, TimeSeriesMoE, _DLMOE_TF_TRIED
+    if tf is not None:
+        return True
+    if _DLMOE_TF_TRIED:
+        return False
+    _DLMOE_TF_TRIED = True
+    if os.environ.get('TIMELENS_ENABLE_DL_MOE', '1').strip().lower() in ('0', 'false', 'no', 'off'):
+        return False
+    try:
+        import dlmoe_net as _net   # ← the ONLY place `import tensorflow` happens
+    except Exception:
+        return False
+    tf = _net.tf
+    Adam = _net.Adam
+    create_sequences = _net.create_sequences
+    TimeSeriesMoE = _net.TimeSeriesMoE
+    return True
 
 warnings.filterwarnings('ignore')
 
@@ -2239,17 +2253,18 @@ ADDITIONAL_FORECASTERS = {
 # the import is guarded and every adapter falls back to Holt-Winters when its
 # library is missing or returns nothing, so production never breaks.
 # =================================================================
-try:
-    from phase2_enhancements import (
-        forecast_catboost as _p2_catboost,
-        forecast_xgb_quantile as _p2_xgb_quantile,
-        forecast_neural_elasticity as _p2_neural_elasticity,
-    )
-    PHASE2_AVAILABLE = True
-except Exception as _p2_err:  # pragma: no cover - defensive
-    PHASE2_AVAILABLE = False
+# LAZY — phase2_enhancements imports catboost (~0.9s) at its module top, so we
+# defer it: find_spec confirms the module exists (no import), and each adapter
+# loads phase2_enhancements on first call. The adapters already fall back to
+# Holt-Winters if their library is missing, so this changes only WHEN catboost
+# loads — keeping it out of module-load / ProcessPool-worker spawn.
+PHASE2_AVAILABLE = _importlib_util.find_spec('phase2_enhancements') is not None
+if PHASE2_AVAILABLE:
+    _p2_catboost = _lazy_callable('phase2_enhancements', 'forecast_catboost')
+    _p2_xgb_quantile = _lazy_callable('phase2_enhancements', 'forecast_xgb_quantile')
+    _p2_neural_elasticity = _lazy_callable('phase2_enhancements', 'forecast_neural_elasticity')
+else:
     _p2_catboost = _p2_xgb_quantile = _p2_neural_elasticity = None
-    print(f"[phase2] enhancements unavailable, falling back to core models: {_p2_err}")
 
 
 def _p2_lag_panel(history: pd.Series) -> pd.DataFrame:
@@ -2632,7 +2647,7 @@ def forecast_dl_moe(history: pd.Series, h: int, freq: str,
     `_run_strategy_forecast` contract. Falls back to Holt-Winters when TF is
     missing or history < INPUT_LEN+OUTPUT_LEN."""
     _hw = (lambda tr, hh: forecast_holt_winters(tr, hh, freq))
-    if tf is None:
+    if not _ensure_dlmoe_tf():   # lazily load TF on first Deep MoE use
         return (forecast_holt_winters(history, h, freq), None,
                 'Deep MoE: disabled (set TIMELENS_ENABLE_DL_MOE=1 with a working '
                 'TensorFlow) â Holt-Winters fallback', _hw)
@@ -2666,6 +2681,12 @@ def forecast_dl_moe(history: pd.Series, h: int, freq: str,
 
     def _run(train_hist: pd.Series, hh: int) -> pd.Series:
         try:
+            # Determinism: seed python/numpy/TF so weight init + mini-batch
+            # shuffle are reproducible run-to-run, matching the rest of the
+            # engine's random_state=42 contract. Without this, dl_moe forecasts
+            # (and therefore champion selection when it competes) drift between
+            # otherwise-identical runs.
+            tf.keras.utils.set_random_seed(42)
             if len(train_hist) < _DLMOE_INPUT_LEN + _DLMOE_OUTPUT_LEN:
                 return forecast_holt_winters(train_hist, hh, freq)
             # Assemble the multivariate frame: target column first, then exog.
@@ -4292,6 +4313,50 @@ def _build_candidate_pool(profile_row: dict,
     return candidates
 
 
+# ── Intelligent Deep MoE (dl_moe) routing ──────────────────────────────────
+# The neural Deep MoE is heavy (per-SKU transformer training). Even when a user
+# selects it ("Deep MoE (Keras)" → compare_algos) or ticks it
+# (portfolio.additional.dl_moe), we evaluate it ONLY for SKUs where it has a
+# realistic chance of helping. Eligibility (ALL must hold):
+#   1. Segment ∈ {Volatile High, Stable High, Volatile Mid} — the only segments
+#      with enough signal + value to justify a neural model.
+#   2. History ≥ 24 months — below this the net under-trains (INPUT_LEN=30).
+#   3. Baseline (no-skill) forecastability is poor: seasonal-naive holdout
+#      WMAPE > 20% — i.e. the SKU is genuinely hard, so a richer model is worth
+#      trying. Easy SKUs (low WMAPE) keep their existing, cheaper champion.
+# This is PURE ROUTING: it only decides whether `dl_moe` stays in the pool. It
+# does not touch TimeSeriesMoE, champion selection, WMAPE math, CIs, the
+# classical MoE, or any other candidate. The WMAPE is computed with the existing
+# `backtest_holdout` + `_seasonal_naive_forecast` helpers (no new metric).
+_DLMOE_ELIGIBLE_SEGMENTS = {
+    'Volatile High contributors',
+    'Stable High contributors',
+    'Volatile Mid contributors',
+}
+_DLMOE_MIN_HISTORY_MONTHS = 24
+_DLMOE_WMAPE_THRESHOLD = 20.0   # percent (backtest_holdout returns WMAPE in %)
+
+
+def _dlmoe_eligible(profile_row: Optional[dict], history: pd.Series,
+                    freq: str) -> bool:
+    """True iff this SKU is an eligible Deep MoE candidate (see routing notes).
+    Conservative: any missing data / error → ineligible (skip the neural net)."""
+    seg = str((profile_row or {}).get('segment') or '')
+    if seg not in _DLMOE_ELIGIBLE_SEGMENTS:
+        return False
+    if history is None or len(history) < _DLMOE_MIN_HISTORY_MONTHS:
+        return False
+    try:
+        m = {'D': 7, 'W': 52, 'MS': 12, 'M': 12, 'QS': 4, 'YS': 1}.get(freq, 12)
+        eval_h = max(1, min(6, len(history) // 4))
+        wmape = backtest_holdout(
+            history, eval_h,
+            lambda tr, hh: _seasonal_naive_forecast(tr, hh, freq, m))[0]
+        return wmape is not None and wmape > _DLMOE_WMAPE_THRESHOLD
+    except Exception:
+        return False
+
+
 def build_candidate_backtest_fns(
     history: pd.Series, sku: str, h: int, freq: str,
     sku_panel: pd.DataFrame, date_col: str, sku_col: str,
@@ -4318,6 +4383,13 @@ def build_candidate_backtest_fns(
     """
     candidates = _build_candidate_pool(profile_row, portfolio, global_pkg,
                                        compare_algos=compare_algos)
+    # Intelligent Deep MoE routing — the SINGLE chokepoint for both entry paths
+    # (compare_algos checklist AND portfolio.additional). Drop `dl_moe` unless
+    # this SKU is eligible (eligible segment + ≥24mo history + baseline
+    # WMAPE>20%), so the neural net never trains for unsuitable SKUs. All other
+    # routing/candidates are untouched.
+    if 'dl_moe' in candidates and not _dlmoe_eligible(profile_row, history, freq):
+        candidates = [c for c in candidates if c != 'dl_moe']
     out: Dict[str, Tuple[Any, pd.Series]] = {}
     err_dict: Dict[str, str] = {} if errors_out is None else errors_out
 
@@ -4334,7 +4406,7 @@ def build_candidate_backtest_fns(
         except Exception as e:
             return cand, None, f"{type(e).__name__}: {e}"
 
-    if len(candidates) >= 4:
+    if _inner_parallel_ok(len(candidates)):
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(candidates))) as executor:
             for cand, result, err in executor.map(_fit_one, candidates):
                 if result is not None:
@@ -4356,6 +4428,32 @@ def build_candidate_backtest_fns(
 def build_cv_candidate_backtest_fns(*args, **kwargs) -> Dict[str, Any]:
     return {k: v[0] for k, v in
             build_candidate_backtest_fns(*args, **kwargs).items()}
+
+
+# ── A1: nested-parallelism guard ──────────────────────────────────────────
+# When the FastAPI worker forecasts MANY SKUs concurrently (outer
+# ThreadPoolExecutor over SKUs in api.py), each SKU's inner candidate
+# ThreadPools (fit pool + evaluation pool) would multiply into 8×4 threads
+# and oversubscribe the CPU. The worker flips this flag ON around multi-SKU
+# parallel runs so the inner pools run SERIALLY; single-SKU runs leave it OFF
+# so the inner candidate competition still parallelises. This only changes the
+# ORDER in which independent, fixed-seed fits execute — never their inputs or
+# outputs — so forecasts / champion / WMAPE / CIs are byte-identical.
+_INNER_PARALLELISM_DISABLED = False
+
+
+def set_inner_parallelism_disabled(disabled: bool) -> None:
+    """Toggle per-SKU inner ThreadPool parallelism. The forecast worker sets
+    this True around its outer multi-SKU parallel loop and restores False
+    afterwards. No effect on results — only on intra-SKU fit ordering."""
+    global _INNER_PARALLELISM_DISABLED
+    _INNER_PARALLELISM_DISABLED = bool(disabled)
+
+
+def _inner_parallel_ok(n: int) -> bool:
+    """True when an inner pool of size `n` should run in parallel: only for
+    pools of 4+ AND when the outer SKU loop has not claimed the cores."""
+    return (n >= 4) and (not _INNER_PARALLELISM_DISABLED)
 
 
 def _evaluate_all_candidates_parallel(
@@ -4384,7 +4482,7 @@ def _evaluate_all_candidates_parallel(
     
     out: Dict[str, Dict[str, Any]] = {}
     # Parallel only for larger pools (4+); threading helps I/O bound backtest calls
-    if len(candidate_fns) >= 4:
+    if _inner_parallel_ok(len(candidate_fns)):
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, len(candidate_fns))) as executor:
             for strat, result in executor.map(_eval_one_strat, candidate_fns.items()):
                 out[strat] = result
@@ -4398,6 +4496,7 @@ def _evaluate_all_candidates_parallel(
 def evaluate_all_candidates_test_mape(
     history: pd.Series, candidate_fns: Dict[str, Tuple[Any, pd.Series]],
     test_h: int = 1,
+    skip_strategy: Optional[str] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """For each candidate, compute single-shot test WMAPE on the last `test_h`
     months. Returns {strategy: {test_mape, test_smape, future_forecast,
@@ -4406,9 +4505,18 @@ def evaluate_all_candidates_test_mape(
     This is the always-on evaluator — it runs regardless of CV mode and
     gives the planner a uniform WMAPE comparison across the candidate pool
     in the Forecast tab's drill-down.
+
+    `skip_strategy` omits ONE candidate (the champion) from re-evaluation: the
+    caller has already backtested it on this exact test slice (the headline
+    evaluation) and OVERWRITES whatever would be computed here for it
+    (test_mape/test_smape/future_forecast); its test_pred/test_actual are never
+    read. Skipping it removes a pure-waste duplicate fit. The caller rebuilds the
+    champion's row from the headline metrics, so outputs stay byte-identical.
     """
     out: Dict[str, Dict[str, Any]] = {}
     for strat, (bt_fn, future_fc) in candidate_fns.items():
+        if skip_strategy is not None and strat == skip_strategy:
+            continue   # champion — already evaluated by the headline backtest
         if len(history) < test_h + 1:
             out[strat] = {
                 'test_mape': None, 'test_smape': None,
@@ -5413,6 +5521,12 @@ def forecast_one_sku(sku: str, panel: pd.DataFrame, profile_row: dict,
         if cv_selected_flag:
             K_TRAIN_WINDOWS = max(3, min(4, max(0, len(history) - EVAL_HORIZON - 2)))
         else:
+            # NOTE: do NOT reduce below 6. The rolling-origin output (tr_pred) is
+            # the in-sample base the Stage-2 XGB residual correction consumes, and
+            # that stage is gated on `len(tr_pred) >= 6` — so fewer than 6 windows
+            # silently DISABLES residual correction and CHANGES the forecast for
+            # residual-booster SKUs. (A2b tried 3–4 here and was reverted for
+            # exactly this forecast-parity violation.)
             K_TRAIN_WINDOWS = max(6, min(8, max(0, len(history) - EVAL_HORIZON - 2)))
         train_mape, train_smape, train_bias_pct, tr_actual, tr_pred, train_reason = \
             rolling_origin_train_backtest(
@@ -5671,6 +5785,12 @@ def forecast_one_sku(sku: str, panel: pd.DataFrame, profile_row: dict,
             all_algo_metrics = evaluate_all_candidates_test_mape(
                 history=history, candidate_fns=candidate_fns,
                 test_h=TEST_HORIZON,
+                # Skip the champion's duplicate test-slice fit — it was just
+                # evaluated by the headline backtest above and that result
+                # overwrites this one. Only skip when the headline produced a
+                # valid WMAPE; otherwise (mape is None) keep the old path so the
+                # champion's row still comes from the pool eval, byte-identically.
+                skip_strategy=(strategy if mape is not None else None),
             )
         except Exception as _eve:
             all_algo_metrics = {}
@@ -5708,10 +5828,16 @@ def forecast_one_sku(sku: str, panel: pd.DataFrame, profile_row: dict,
         if forecast is not None:
             all_algo_metrics[strategy]['future_forecast'] = forecast
     elif strategy not in all_algo_metrics and forecast is not None:
-        # Ensure the champion always has an entry, even if pool build skipped it
+        # Ensure the champion always has an entry — either pool build skipped it,
+        # or we deliberately skipped its duplicate fit in the evaluator above.
+        # Rebuild the row from the HEADLINE metrics (identical to what the
+        # overwrite branch sets). test_pred/test_actual are seeded from the
+        # headline backtest so the row shape has no missing fields (these fields
+        # are never read downstream).
         all_algo_metrics[strategy] = {
             'test_mape': mape, 'test_smape': smape,
             'future_forecast': forecast, 'test_reason': mape_reason,
+            'test_pred': bt_pred, 'test_actual': bt_actual,
         }
 
     # Mark the champion + merge CV scores AND the val-WMAPE used for
@@ -8513,7 +8639,7 @@ def render_forecast_tab(cfg):
                   'naive_seasonal']
     if PHASE2_AVAILABLE:
         _all_algos += ['catboost', 'xgb_quantile_90']
-    if tf is not None:
+    if _dlmoe_tf_available():   # probe (no TF import) — offer dl_moe iff TF installed
         _all_algos += ['dl_moe']
     _reco_algos = ['moe', 'global_lgbm', 'prophet', 'theta', 'holt_winters', 'autoarima']
 
@@ -13107,7 +13233,7 @@ class TimeSeriesForecaster:
         """Deep-learning Mixture-of-Experts (Keras) â trend + Fourier-seasonality
         + transformer experts combined by a softmax gating network. Ported from
         app_96.py. Multivariate when exog is supplied."""
-        if tf is None:
+        if not _ensure_dlmoe_tf():   # lazily load TF on first Deep MoE use
             raise ImportError("TensorFlow is not installed/working. "
                               "Run 'pip install tensorflow' to use Deep MoE.")
         target_series = train_data[[self.eda.sales_col]]
@@ -13826,7 +13952,7 @@ def render_single_series_forecast_tab():
         st.caption("ð§  **dl_moe** is the Keras deep-learning Mixture-of-Experts "
                    "(trend + seasonality + transformer experts, softmax gating). "
                    + ("Requires â¥31 observations; trains a neural net so it's slow."
-                      if tf is not None else
+                      if _dlmoe_tf_available() else
                       "â  Disabled in this environment â start the app with "
                       "`TIMELENS_ENABLE_DL_MOE=1` and a working TensorFlow to "
                       "enable it; otherwise it falls back to Holt-Winters."))

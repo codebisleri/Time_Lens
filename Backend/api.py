@@ -34,7 +34,14 @@ import sys
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
+import multiprocessing as _mp
+try:
+    # A1: scoped BLAS/OpenMP/LightGBM thread cap around the parallel SKU loop.
+    # Optional — falls back to a no-op if the (transitive) dep is unavailable.
+    from threadpoolctl import threadpool_limits
+except Exception:  # pragma: no cover - optional dependency
+    threadpool_limits = None
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -63,6 +70,57 @@ for _ln in ("streamlit", "streamlit.runtime", "streamlit.runtime.caching",
 warnings.filterwarnings("ignore", message=".*ScriptRunContext.*")
 warnings.filterwarnings("ignore", message=".*missing ScriptRunContext.*")
 
+# ── Terminal noise reduction (logging readability) ──────────────────────────
+# Prophet's Stan backend (cmdstanpy) prints a "Chain [1] start/done processing"
+# pair for EVERY Prophet fit — dozens per run — and uvicorn's ACCESS log prints
+# a line for every ~1.5s status poll the frontend fires while a run is in flight.
+# Both are pure noise. We keep WARNING/ERROR from those libs, ALL non-polling
+# requests, every 4xx/5xx, and uvicorn's startup/error logs — only the repetitive
+# INFO chatter is dropped. No forecasting behaviour changes.
+class _PollingAccessFilter(logging.Filter):
+    """Drop uvicorn.access lines for high-frequency polling / health GETs."""
+    _QUIET = ("/forecasts/jobs/", "/health", "/healthz", "/favicon.ico")
+    _KEEP = ("/metrics", "/reconciliation", "/submission", "/algorithms",
+             "/export", "/single-sku", "/all-models")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return True
+        # Keep anything that is NOT a 2xx/3xx response → all 4xx/5xx errors stay.
+        if '" 2' not in msg and '" 3' not in msg:
+            return True
+        if any(q in msg for q in self._QUIET):
+            return False
+        # Per-id forecast detail poll: GET /forecasts/<id> — but keep meaningful
+        # named sub-routes (metrics / export / reconciliation / …).
+        if '"GET /forecasts/' in msg and not any(k in msg for k in self._KEEP):
+            return False
+        return True
+
+
+def _quiet_noisy_logs() -> None:
+    """Idempotently silence chatty third-party loggers + attach the access-log
+    polling filter. Called at import AND on FastAPI startup (after uvicorn may
+    have reconfigured logging), so it survives either launch path."""
+    for _ln in ("cmdstanpy", "prophet", "stan", "matplotlib",
+                "matplotlib.font_manager", "PIL", "numexpr", "lightgbm",
+                "dowhy", "h5py"):
+        _lg = logging.getLogger(_ln)
+        _lg.setLevel(logging.WARNING)
+        for _h in list(_lg.handlers):
+            try:
+                _h.setLevel(logging.WARNING)
+            except Exception:
+                pass
+    _acc = logging.getLogger("uvicorn.access")
+    if not any(isinstance(_f, _PollingAccessFilter) for _f in _acc.filters):
+        _acc.addFilter(_PollingAccessFilter())
+
+
+_quiet_noisy_logs()
+
 # Ensure the engine modules (app_v2_6.py, temporal_features.py) import regardless
 # of the process working directory.
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -71,6 +129,10 @@ if BASE_DIR not in sys.path:
 
 import app_v2_6 as engine  # noqa: E402  — heavy import: the forecasting engine
 import scenario_engine  # noqa: E402  — Scenario causal (DoWhy) service, parity extract
+
+# Re-apply after the engine import: Prophet/cmdstanpy reset their own logger
+# levels to INFO when imported (above), which would undo the pre-import silencing.
+_quiet_noisy_logs()
 
 
 # ── Headless Streamlit shim ───────────────────────────────────────────────────
@@ -226,7 +288,7 @@ class _Heartbeat:
 
     def __init__(self, job_id: str, stages: List[str], interval: float = 1.2):
         self._job_id = job_id
-        self._stages = stages or ["Working"]
+        self._stages = list(stages or [])
         self._interval = interval
         self._lock = threading.Lock()
         self._active = True
@@ -266,9 +328,21 @@ class _Heartbeat:
             # Smooth saturating ease toward the ceiling (never reaches it).
             frac = 1.0 - 0.5 ** (elapsed / 7.0)
             prog = base + (ceil - base) * min(frac, 0.92)
-            stage = self._stages[tick % len(self._stages)]
+            # Rotate caller-supplied stages ONLY when provided. The portfolio
+            # worker passes none, so the ticker shows the real step label alone
+            # and can never invent a model name that isn't actually running.
+            # (The single-SKU worker passes its actually-selected model list,
+            # which is truthful, so its behaviour is preserved.)
+            stage = self._stages[tick % len(self._stages)] if self._stages else ""
             secs = int(elapsed)
-            msg = f"{label} — {stage}…" if label else f"{stage}…"
+            if label and stage:
+                msg = f"{label} — {stage}…"
+            elif label:
+                msg = f"{label}…"
+            elif stage:
+                msg = f"{stage}…"
+            else:
+                msg = "Working…"
             if secs >= 2:
                 msg = f"{msg} ({secs}s)"
             _job_update(self._job_id, progress=int(prog * 100), message=msg)
@@ -1562,6 +1636,14 @@ def build_forecast_detail(res: "engine.ForecastResult", history: pd.Series,
 # ──────────────────────────────────────────────────────────────────────────────
 app = FastAPI(title="Time Lens API Bridge", version="1.0.0")
 
+
+@app.on_event("startup")
+def _on_startup_quiet_logs() -> None:
+    # Re-apply noise suppression AFTER uvicorn has (re)configured logging on
+    # startup, so the access-log polling filter + Stan/cmdstanpy silencing
+    # survive regardless of launch path (uvicorn CLI vs __main__).
+    _quiet_noisy_logs()
+
 # CORS for the Next.js dev server. The frontend's axios client sends
 # `withCredentials: true`, so the browser forbids a wildcard origin — we must
 # echo explicit origins AND allow credentials. Extra origins can be supplied via
@@ -1705,6 +1787,10 @@ def _resolve_config(row: sqlite3.Row) -> Dict[str, Any]:
         "categoryCol": _row_get(row, "category_col"),
         "priceCol": _row_get(row, "price_col"),
         "segmentCol": None,
+        # Explicit segmentation-source control (Profile & Route). When True the
+        # forecast uses the GENERATED segmentation and ignores the uploaded
+        # segment column; when False it uses the uploaded column if one exists.
+        "useGeneratedSegmentation": False,
         "brandCol": _pick_column(cols, ["brand", "manufacturer", "vendor", "label"]),
         "freq": _row_get(row, "freq") or "MS",
         "horizon": 12,
@@ -2317,6 +2403,172 @@ def _series_to_pairs(s: Any) -> List[Dict[str, Any]]:
     return [{"d": iso_date(i), "v": clean_float(v)} for i, v in s.items()]
 
 
+# ════════════════════════════════════════════════════════════════════════════
+# ProcessPool SKU execution — bypass the GIL for CPU-bound multi-SKU forecasting
+# ════════════════════════════════════════════════════════════════════════════
+# The outer SKU loop is embarrassingly parallel, but Python THREADS serialise on
+# the GIL during the heavy Python orchestration inside AutoARIMA / SARIMAX /
+# Prophet / dl_moe (measured here: ThreadPool ≈ 0.9× on AutoARIMA; ProcessPool ≈
+# 4× with BLAS capped). So each SKU runs in its OWN process. The math is
+# untouched — forecast_one_sku is read-only over shared inputs and fully seeded
+# (random_state=42 / TF seed) — so process isolation yields BYTE-IDENTICAL
+# forecasts / champion / WMAPE / CIs.
+#
+# A1 is PRESERVED, relocated into each worker (inner candidate pools serialised
+# + native BLAS/OpenMP threads capped to 1) so N processes × 1 thread = N cores
+# with NO oversubscription. Large read-only inputs (panel / global model /
+# profiles / segmentation) ship ONCE per process via the initializer; each task
+# carries only a SKU id. Any spawn/pool failure (e.g. a frozen desktop build)
+# falls back to the A1 ThreadPool; force-disable with
+# TIMELENS_FORECAST_PROCESSPOOL=0.
+_PROCESSPOOL_ENABLED = os.environ.get(
+    "TIMELENS_FORECAST_PROCESSPOOL", "1").strip().lower() not in ("0", "false", "no", "off")
+# Spawn cost matters: each worker process imports the engine + TensorFlow
+# (~5 s / ~325 MB), so the pool only pays off once enough SKUs amortise that
+# one-time warm-up. Measured break-even on the (cheap) default pool is ~8-12
+# SKUs; below it the ThreadPool is faster. Default 16 leaves a safety margin so
+# the switch NEVER regresses small runs; tune via TIMELENS_PROCESSPOOL_MIN_SKUS.
+try:
+    _PROCESSPOOL_MIN_SKUS = max(2, int(os.environ.get("TIMELENS_PROCESSPOOL_MIN_SKUS", "16")))
+except Exception:
+    _PROCESSPOOL_MIN_SKUS = 16
+_PP_BLAS_VARS = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS",
+                 "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS")
+_PP_SHARED: Dict[str, Any] = {}   # per-process read-only inputs (set by initializer)
+_PP_LIMITER = None                # holds the threadpool_limits ctx so it isn't GC'd
+
+
+def _pp_init_worker(shared: Dict[str, Any]) -> None:
+    """ProcessPool initializer — runs ONCE per worker process. Applies A1 (no
+    nested model pools + native threads capped to 1) and stashes the shared
+    read-only inputs so each task ships only a SKU id."""
+    global _PP_SHARED, _PP_LIMITER
+    for _v in _PP_BLAS_VARS:
+        os.environ[_v] = "1"
+    try:
+        if threadpool_limits is not None:
+            _PP_LIMITER = threadpool_limits(limits=1)   # kept alive for process lifetime
+    except Exception:
+        _PP_LIMITER = None
+    try:
+        engine.set_inner_parallelism_disabled(True)      # A1: serialise inner pools
+    except Exception:
+        pass
+    _PP_SHARED = shared
+
+
+def _pp_forecast_worker(sku: str):
+    """ProcessPool task — forecast ONE sku from the process-global shared inputs.
+    Mirrors the in-thread `_compute_one` EXACTLY (same secondary-model merge, same
+    forecast_one_sku call). Never raises: returns (sku, ForecastResult|None, err)."""
+    s = _PP_SHARED
+    try:
+        pr = (s["prof_by_sku"] or {}).get(sku, {})
+        # Per-segment SECONDARY models — identical merge to _compute_one/_seg_for.
+        extra = list(s["compare_algos"] or [])
+        _segv = (s["seg_by_sku"] or {}).get(str(sku))
+        _seg = str(_segv) if _segv and str(_segv).strip().lower() != "unknown" else None
+        _ss = s["segment_secondary"] or {}
+        if _seg and _ss.get(_seg):
+            for _m in _ss[_seg]:
+                if _m and _m not in extra:
+                    extra.append(_m)
+        res = engine.forecast_one_sku(
+            sku=sku, panel=s["panel"], profile_row=pr,
+            h=s["periods"], freq=s["freq"],
+            sku_col=s["sku_col"], date_col=s["date_col"], sales_col=s["sales_col"],
+            global_pkg=s["global_pkg"], global_pkg_backtest=s["global_pkg_backtest"],
+            run_backtest=s["evaluate_oos"], cv_mode=s["cv_mode"], cfg=None,
+            compare_algos=extra or None,
+        )
+        return sku, res, None
+    except Exception as exc:  # isolate failures — one bad SKU never kills the run
+        return sku, None, f"{type(exc).__name__}: {exc}"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# PERSISTENT ProcessPool — created ONCE (lazily, on the first qualifying run) and
+# reused for every subsequent forecast request. Eliminates the repeated worker
+# spawn + engine/heavy-library import that the per-request pool paid every run.
+# ════════════════════════════════════════════════════════════════════════════
+# The per-request SHARED payload (panel / global model / profiles / config) can't
+# ride the pool initializer (the pool outlives any single request), so each
+# request writes it to a PRIVATE temp file and tasks carry only
+# (request_id, payload_path, sku). A worker (re)loads the payload ONLY when the
+# request_id changes — replacing any prior request's data, so NO stale state ever
+# leaks between runs. Worker processes (and their imported engine/libraries)
+# persist; only the request data is refreshed. Byte-identical to the per-request
+# pool: the persistent worker delegates to the SAME _pp_forecast_worker.
+import pickle as _pickle
+import tempfile as _tempfile
+import threading as _threading
+
+_PERSISTENT_POOL = None
+_PERSISTENT_POOL_LOCK = _threading.Lock()
+_PP_RID = None   # WORKER-side: request_id whose payload currently sits in _PP_SHARED
+
+
+def _pp_init_worker_persistent() -> None:
+    """Persistent-pool initializer — runs ONCE per worker at pool creation.
+    Applies A1 (native BLAS/OpenMP threads capped to 1 + no nested model pools).
+    Loads NO request payload; that arrives per request, keyed by request_id."""
+    global _PP_LIMITER
+    for _v in _PP_BLAS_VARS:
+        os.environ[_v] = "1"
+    try:
+        if threadpool_limits is not None:
+            _PP_LIMITER = threadpool_limits(limits=1)   # runtime cap, kept alive
+    except Exception:
+        _PP_LIMITER = None
+    try:
+        engine.set_inner_parallelism_disabled(True)      # A1: serialise inner pools
+    except Exception:
+        pass
+
+
+def _pp_forecast_worker_persistent(rid: str, payload_path: str, sku: str):
+    """Persistent-pool task. (Re)loads the request payload into _PP_SHARED ONLY
+    when the request_id changes (no stale data between runs), then delegates to
+    the EXACT same _pp_forecast_worker → byte-identical results."""
+    global _PP_SHARED, _PP_RID
+    try:
+        if _PP_RID != rid:
+            with open(payload_path, "rb") as _fh:
+                _PP_SHARED = _pickle.load(_fh)   # replace any prior request's data
+            _PP_RID = rid
+    except Exception as exc:
+        return sku, None, f"payload-load: {type(exc).__name__}: {exc}"
+    return _pp_forecast_worker(sku)
+
+
+def _get_persistent_pool(workers: int):
+    """Lazy singleton — create the persistent pool ONCE, reuse for every request.
+    Rebuilt only if a prior pool was disposed (worker crash)."""
+    global _PERSISTENT_POOL
+    with _PERSISTENT_POOL_LOCK:
+        if _PERSISTENT_POOL is None:
+            _ctx = _mp.get_context("spawn")
+            _PERSISTENT_POOL = ProcessPoolExecutor(
+                max_workers=workers, mp_context=_ctx,
+                initializer=_pp_init_worker_persistent)
+        return _PERSISTENT_POOL
+
+
+def _reset_persistent_pool() -> None:
+    """Dispose the persistent pool (e.g. after a BrokenProcessPool from a worker
+    crash) so the NEXT request rebuilds it. Best-effort; never raises. (stdlib
+    ProcessPoolExecutor cannot respawn a single worker, so a crash recreates the
+    pool on the next request; the in-flight request finishes on the ThreadPool.)"""
+    global _PERSISTENT_POOL
+    with _PERSISTENT_POOL_LOCK:
+        if _PERSISTENT_POOL is not None:
+            try:
+                _PERSISTENT_POOL.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
+            _PERSISTENT_POOL = None
+
+
 def _forecast_worker(job_id: str, ds: Dict[str, Any], chosen_skus: List[str],
                      periods: int, freq: str, horizon: str,
                      compare_algos: Optional[List[str]] = None,
@@ -2331,12 +2583,12 @@ def _forecast_worker(job_id: str, ds: Dict[str, Any], chosen_skus: List[str],
     _job_update(job_id, status="running", runId=run_id, startedAt=now_iso(),
                 progress=0, message="Preparing data & features…")
     # Liveness ticker — cosmetic status only (never touches forecast math).
-    hb: Optional[_Heartbeat] = _Heartbeat(
-        job_id,
-        ["Training AutoARIMA", "Running Prophet", "Fitting Theta / Holt-Winters",
-         "Evaluating models", "Cross-validating folds", "Selecting champion",
-         "Applying reconciliation"],
-    ).start()
+    # No stage list: the ticker smooths progress under the REAL step label set
+    # via hb.step()/_job_update() below, so it can never invent a model name
+    # that isn't actually running. Actual champions are surfaced per-SKU at
+    # persist time from the already-computed result (no recomputation).
+    hb: Optional[_Heartbeat] = _Heartbeat(job_id, []).start()
+    hb.step("Preparing data & features", 0.0, 0.06)
     try:
         # Single-run mode: a new run supersedes any prior run for this dataset.
         # Drop the old run + its forecasts and the now-stale submission worksheet
@@ -2390,17 +2642,32 @@ def _forecast_worker(job_id: str, ds: Dict[str, Any], chosen_skus: List[str],
             run_keys = chosen_skus
         prof_by_sku = {str(rec["sku"]): rec for rec in profiles.to_dict("records")}
 
-        # ── Phase X.G — segment propagation (DISPLAY only) ───────────────────
-        # The per-SKU profile table is built with segment_col="" so its `segment`
-        # is "unknown" (business segments are COMPUTED in Profile & Route, not a
-        # raw column). Pull the saved Profile & Route business segment — the SAME
-        # source the Profile page shows — and use it for forecast OUTPUTS so the
-        # performance/champion tables, reports and exports never read "unknown".
-        # `profile_row` is intentionally NOT mutated → routing/candidate-pool and
-        # the chosen primary are unchanged. SKU grain only (the saved segmentation
-        # is keyed by the dataset SKU column; custom/enterprise grain is left as-is).
+        # ── Explicit segmentation source — EXACTLY ONE, no mixing ────────────
+        # Resolve a single source for forecast OUTPUTS (display / filter / group).
+        # Routing & candidate-pool are unchanged — profile_row is never mutated.
+        # Priority: user "use generated" flag → uploaded segment column →
+        # generated (fallback). The forecast NEVER blends two sources, which
+        # eliminates the Profile-vs-Forecast ambiguity (e.g. SKU-0065).
+        seg_col = cfg.get("segmentCol")
+        _has_uploaded = bool(seg_col) and str(seg_col) in set(df.columns.astype(str))
+        segment_source = (
+            "generated"
+            if (bool(cfg.get("useGeneratedSegmentation")) or not _has_uploaded)
+            else "uploaded"
+        )
         seg_by_sku: Dict[str, str] = {}
-        if level_mode == "sku":
+        if segment_source == "uploaded":
+            # Read the user-selected uploaded segment column verbatim (first value
+            # per entity). This is the ONLY source when active.
+            try:
+                _u = df[[skc, str(seg_col)]].dropna().groupby(skc)[str(seg_col)].first()
+                for _k, _v in _u.items():
+                    _vs = str(_v).strip()
+                    if _vs and _vs.lower() not in ("unknown", "nan", "none", ""):
+                        seg_by_sku[str(_k)] = _vs
+            except Exception as exc:
+                logging.warning("uploaded segment read failed: %s", exc)
+        elif level_mode == "sku":  # generated (Profile & Route computed)
             try:
                 _seg_res = _build_segmentation(dict(ds), _resolve_seg_params(_seg_param_overrides({})))
                 for _s in _seg_res.get("skus", []):
@@ -2411,12 +2678,12 @@ def _forecast_worker(job_id: str, ds: Dict[str, Any], chosen_skus: List[str],
                 logging.warning("segment propagation lookup failed: %s", exc)
 
         def _seg_for(sku_key: Any, profile_row: Dict[str, Any]) -> Optional[str]:
-            """Priority: saved Profile & Route segment → profile segment → None."""
-            saved = seg_by_sku.get(str(sku_key))
-            if saved:
-                return saved
-            ps = profile_row.get("segment")
-            return str(ps) if ps and str(ps).strip().lower() != "unknown" else None
+            """The SINGLE active source only — no profile/uploaded cross-fallback,
+            so forecast OUTPUTS can never blend two sources. None when the active
+            source has no value for this entity. (profile_row kept for call-site
+            compatibility but intentionally unused.)"""
+            v = seg_by_sku.get(str(sku_key))
+            return str(v) if v and str(v).strip().lower() != "unknown" else None
 
         panel = engine.build_panel_features(
             df, date_col=ds["date_col"], sales_col=ds["sales_col"],
@@ -2522,28 +2789,108 @@ def _forecast_worker(job_id: str, ds: Dict[str, Any], chosen_skus: List[str],
                 """Advance job progress + ETA after each level finishes (Task 4)."""
                 nonlocal completed
                 completed += 1
-                hb.step(f"Forecasting ({completed} of {total})",
+                hb.step(f"Forecasting {completed} of {total} SKUs",
                         (completed - 1) / max(total, 1), completed / max(total, 1))
                 elapsed = time.time() - _t_start
                 eta = int(elapsed / completed * (total - completed)) if completed else 0
                 _job_update(
                     job_id,
                     progress=int(completed / max(total, 1) * 100),
-                    message=f"Completed {completed} / {total} · ~{eta}s remaining",
+                    message=f"Forecasting {completed} of {total} SKUs · ~{eta}s remaining",
                 )
 
             # Parallel for real runs; serial fallback for tiny runs avoids pool
             # overhead and keeps single-entity behaviour byte-for-byte identical.
             if workers > 1 and total > 1:
-                with ThreadPoolExecutor(max_workers=workers) as pool:
-                    futures = {pool.submit(_compute_one, sku): sku for sku in run_keys}
-                    for fut in as_completed(futures):
-                        sku = futures[fut]
+                # Shared READ-ONLY inputs for the process workers — shipped once
+                # per process via the initializer (each task carries only a SKU).
+                _pp_shared = {
+                    "panel": panel, "prof_by_sku": prof_by_sku, "seg_by_sku": seg_by_sku,
+                    "segment_secondary": segment_secondary, "compare_algos": compare_algos,
+                    "periods": periods, "freq": freq, "sku_col": skc,
+                    "date_col": ds["date_col"], "sales_col": ds["sales_col"],
+                    "global_pkg": global_pkg, "global_pkg_backtest": global_pkg_backtest,
+                    "evaluate_oos": evaluate_oos, "cv_mode": cv_mode,
+                }
+                _attempted: set = set()   # SKUs the process pool cleanly returned (ok or soft-fail)
+
+                # ── PRIMARY: ProcessPoolExecutor — one process per SKU, true
+                # multi-core (bypasses the GIL). A1 (inner-pool serialisation +
+                # 1 native thread/worker) is applied INSIDE each worker via the
+                # initializer, so N processes × 1 thread = N cores, no
+                # oversubscription. Results return by SKU key, so ordering is
+                # reconstructed deterministically by the serial persist below.
+                # Gated on a SKU-count threshold so the spawn warm-up never makes
+                # a small run slower (below the threshold the ThreadPool wins).
+                if _PROCESSPOOL_ENABLED and total >= _PROCESSPOOL_MIN_SKUS:
+                    # PERSISTENT pool: created once (lazily) and reused across all
+                    # requests. The per-request payload can't ride the (long-lived)
+                    # initializer, so write it to a PRIVATE temp file; tasks carry
+                    # only (request_id, payload_path, sku) and each worker (re)loads
+                    # it ONLY when request_id changes → fresh data every run, no
+                    # leakage. Worker PIDs + imported libraries persist between runs.
+                    _rid = uuid.uuid4().hex
+                    _payload_path = None
+                    try:
+                        _fd, _payload_path = _tempfile.mkstemp(prefix="tl_ppshared_", suffix=".pkl")
+                        with os.fdopen(_fd, "wb") as _pf:
+                            _pickle.dump(_pp_shared, _pf, protocol=_pickle.HIGHEST_PROTOCOL)
+                        _pool = _get_persistent_pool(workers)   # created ONCE, reused
+                        _futs = {_pool.submit(_pp_forecast_worker_persistent,
+                                              _rid, _payload_path, sku): sku
+                                 for sku in run_keys}
                         try:
-                            results_by_sku[sku] = fut.result()
-                        except Exception as exc:  # skip a failing entity, keep going
-                            logging.warning("forecast_one_sku failed for %s: %s", sku, exc)
-                        _note_progress()
+                            for fut in as_completed(_futs):
+                                # .result() re-raises BrokenProcessPool on a worker
+                                # CRASH → dispose pool + ThreadPool fallback below.
+                                _s, _res, _err = fut.result()
+                                _attempted.add(_s)
+                                if _res is not None:
+                                    results_by_sku[_s] = _res
+                                elif _err:  # soft failure — log & skip, don't retry
+                                    logging.warning("forecast_one_sku failed for %s: %s", _s, _err)
+                                _note_progress()
+                        except (KeyboardInterrupt, SystemExit):  # graceful cancellation
+                            raise
+                    except (KeyboardInterrupt, SystemExit):
+                        raise
+                    except Exception as exc:  # worker crash / BrokenProcessPool / spawn
+                        logging.warning("Persistent ProcessPool degraded (%s); disposing it "
+                                        "and finishing remaining SKUs on the A1 ThreadPool", exc)
+                        _reset_persistent_pool()   # NEXT request rebuilds it
+                    finally:
+                        if _payload_path:
+                            try:
+                                os.remove(_payload_path)   # cleanup → no stale data on disk
+                            except OSError:
+                                pass
+
+                # ── FALLBACK: A1 ThreadPool for any SKU the process pool didn't
+                # cleanly handle (pool disabled, or it broke part-way). Identical
+                # to the previous outer-loop implementation; runs ALL SKUs when
+                # the ProcessPool is disabled, so behaviour is unchanged there.
+                _remaining = [s for s in run_keys if s not in _attempted]
+                if _remaining:
+                    engine.set_inner_parallelism_disabled(True)
+                    _per_worker_threads = max(1, (os.cpu_count() or 1) // workers)
+                    _thread_cap = (threadpool_limits(limits=_per_worker_threads)
+                                   if threadpool_limits is not None else None)
+                    if _thread_cap is not None:
+                        _thread_cap.__enter__()
+                    try:
+                        with ThreadPoolExecutor(max_workers=workers) as pool:
+                            futures = {pool.submit(_compute_one, sku): sku for sku in _remaining}
+                            for fut in as_completed(futures):
+                                sku = futures[fut]
+                                try:
+                                    results_by_sku[sku] = fut.result()
+                                except Exception as exc:  # skip a failing entity, keep going
+                                    logging.warning("forecast_one_sku failed for %s: %s", sku, exc)
+                                _note_progress()
+                    finally:
+                        engine.set_inner_parallelism_disabled(False)
+                        if _thread_cap is not None:
+                            _thread_cap.__exit__(None, None, None)
             else:
                 for sku in run_keys:
                     try:
@@ -2581,7 +2928,13 @@ def _forecast_worker(job_id: str, ds: Dict[str, Any], chosen_skus: List[str],
                 produced += 1
                 persisted[sku] = (fc_id, profile_row)
                 result_objs.append(res)
-                _job_update(job_id, skuCount=produced)
+                # Truthful per-SKU completion: the champion comes straight from
+                # the already-built detail (res.strategy_used → detail["model"]).
+                # No recomputation; only models that actually won are ever named.
+                _job_update(
+                    job_id, skuCount=produced,
+                    message=f"Forecasted {sku} · Champion: {detail['model']}",
+                )
 
             # Per-SKU competition done — pin the heartbeat to the finalize band.
             hb.step("Finalizing", 0.96, 0.99)
@@ -2658,6 +3011,30 @@ def _forecast_worker(job_id: str, ds: Dict[str, Any], chosen_skus: List[str],
                 "forecastLevelCols": ecfg.get("forecast_level_cols") or [],
                 "outlierTreatment": outlier_summary,
                 "topDown": td_summary,
+                # Explicit segmentation source used for THIS run's outputs.
+                "segmentSource": segment_source,
+                "segmentColumn": (seg_col if segment_source == "uploaded" else None),
+                # ── Run manifest (B1b reproducibility) ───────────────────────
+                # Snapshot of every candidate-pool-shaping input, so a later
+                # GET /forecasts/{id}/all-models can deterministically rebuild
+                # the EXACT competition (seed=42 engine). PERSISTENCE ONLY — these
+                # values are never read back during this run, so forecast outputs,
+                # champion selection, WMAPE, routing and segmentation are all
+                # unchanged. Older runs simply lack the "manifest" key (readers
+                # must treat it as optional → backward compatible).
+                "manifest": {
+                    "manifestVersion": 1,
+                    "compareAlgos": list(compare_algos) if compare_algos else None,
+                    "segmentSecondary": segment_secondary or {},
+                    "cvMode": bool(cv_mode),
+                    "evaluateOos": bool(evaluate_oos),
+                    "useGlobal": bool(use_global),
+                    "coldStartMonths": cfg.get("coldStartMonths"),
+                    "shortHistoryMonths": cfg.get("shortHistoryMonths"),
+                    "segmentation": _resolve_seg_params(_seg_param_overrides({})),
+                    "periods": int(periods),
+                    "freq": freq,
+                },
             }
             conn.execute(
                 """INSERT INTO forecast_runs
@@ -2724,6 +3101,19 @@ def start_forecast_run(payload: Optional[Dict[str, Any]] = None) -> Dict[str, An
     # preserve forecast parity (the parity validation showed OOS=off changes the
     # selected champion and forecast values). Output parity > speed.
     evaluate_oos = bool(payload.get("evaluateOos", True))
+
+    # ── Explicit segmentation source + Case-2 gate ───────────────────────────
+    # If there is NO uploaded segment column AND the user has not run Profile &
+    # Route segmentation, the forecast has no segmentation source → block with
+    # guidance (success criterion: forecasting cannot start without a source).
+    _ds_cols = json.loads(ds.get("columns_json") or "[]") if ds.get("columns_json") else []
+    _seg_col_sel = _run_cfg.get("segmentCol")
+    _has_uploaded_seg = bool(_seg_col_sel) and str(_seg_col_sel) in {str(c) for c in _ds_cols}
+    if not _has_uploaded_seg and not workflow_get(ds.get("owner")).get("profileCompleted"):
+        raise HTTPException(
+            status_code=422,
+            detail="Please run Profile & Route segmentation before forecasting.",
+        )
 
     profiles = get_profiles(ds)  # fast + cached; warms the worker's cache too
     freq = ds.get("freq") or "MS"

@@ -111,7 +111,7 @@ export function WaterfallChart({
       ],
     };
   }, [steps, resolvedMode]);
-  return <EChartBase option={option} height={height} onReady={onReady} />;
+  return <EChartBase option={option} height={height} onReady={onReady} slider />;
 }
 
 export function HorizonStacked({
@@ -128,6 +128,27 @@ export function HorizonStacked({
     void resolvedMode;
     const hasExog = periods.some((p) => (p.exogenous ?? 0) !== 0);
     const hasResid = periods.some((p) => (p.residual ?? 0) !== 0);
+    // Task 7 — modern stacked AREA with smooth lines + gradient fills (replaces
+    // the flat stacked bars). Each layer fades top→bottom for depth.
+    const grad = (c: string) => ({
+      type: "linear" as const,
+      x: 0, y: 0, x2: 0, y2: 1,
+      colorStops: [
+        { offset: 0, color: `${c}cc` },
+        { offset: 1, color: `${c}14` },
+      ],
+    });
+    const layer = (name: string, data: number[], color: string) => ({
+      name,
+      type: "line" as const,
+      stack: "h",
+      smooth: true,
+      showSymbol: false,
+      data,
+      lineStyle: { width: 1.5, color },
+      itemStyle: { color },
+      areaStyle: { color: grad(color), opacity: 0.95 },
+    });
     return {
       animationDuration: 500,
       legend: { top: 0 },
@@ -135,22 +156,19 @@ export function HorizonStacked({
       tooltip: { trigger: "axis", valueFormatter: (v) => formatNumber(v as number) },
       xAxis: {
         type: "category",
+        boundaryGap: false,
         data: periods.map((p) => p.index ?? p.label),
         axisLabel: { interval: 0, rotate: 28, fontSize: 10 },
       },
       yAxis: { type: "value" },
       series: [
-        { name: "Base", type: "bar", stack: "h", data: periods.map((p) => p.base), itemStyle: { color: "#64748b" } },
-        { name: "Trend", type: "bar", stack: "h", data: periods.map((p) => p.trend), itemStyle: { color: "#2563eb" } },
-        { name: "Seasonality", type: "bar", stack: "h", data: periods.map((p) => p.seasonality), itemStyle: { color: "#16a34a" } },
-        ...(hasExog
-          ? [{ name: "Exogenous", type: "bar" as const, stack: "h", data: periods.map((p) => p.exogenous ?? 0), itemStyle: { color: "#ea580c" } }]
-          : []),
-        ...(hasResid
-          ? [{ name: "Residual", type: "bar" as const, stack: "h", data: periods.map((p) => p.residual ?? 0), itemStyle: { color: "#94a3b8" } }]
-          : []),
+        layer("Base", periods.map((p) => p.base), "#64748b"),
+        layer("Trend", periods.map((p) => p.trend), "#2563eb"),
+        layer("Seasonality", periods.map((p) => p.seasonality), "#16a34a"),
+        ...(hasExog ? [layer("Exogenous", periods.map((p) => p.exogenous ?? 0), "#ea580c")] : []),
+        ...(hasResid ? [layer("Residual", periods.map((p) => p.residual ?? 0), "#94a3b8")] : []),
       ],
     };
   }, [periods, resolvedMode]);
-  return <EChartBase option={option} height={height} onReady={onReady} />;
+  return <EChartBase option={option} height={height} onReady={onReady} slider />;
 }

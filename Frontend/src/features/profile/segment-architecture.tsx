@@ -60,8 +60,8 @@ function ArchitectureCard({
   const secondary = arch.blend.map(modelName);
 
   return (
-    <Card className={cn("overflow-hidden p-0", dim && "opacity-60")}>
-      <div className="space-y-3 p-4" style={{ borderLeft: `4px solid ${color}` }}>
+    <Card className={cn("h-full overflow-hidden p-0", dim && "opacity-60")}>
+      <div className="flex h-full flex-col space-y-3 p-4" style={{ borderLeft: `4px solid ${color}` }}>
         {/* Header — segment name + priority */}
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-sm font-semibold leading-snug text-foreground">{seg.segment}</h3>
@@ -120,14 +120,45 @@ function ArchitectureCard({
   );
 }
 
+/** Muted placeholder so every slot shows a card even at zero count — the 3×3
+ *  grid never collapses and all dimensions stay equal. */
+function PlaceholderCard({ name, levelPlural }: { name: string; levelPlural: string }) {
+  return (
+    <Card className="h-full overflow-hidden p-0 opacity-60">
+      <div className="flex h-full flex-col gap-2 p-4" style={{ borderLeft: "4px solid #64748b" }}>
+        <h3 className="text-sm font-semibold leading-snug text-foreground">{name}</h3>
+        <p className="text-2xl font-semibold tabular-nums text-muted-foreground">0</p>
+        <p className="text-xs text-muted-foreground">
+          No {levelPlural.toLowerCase()} routed to this segment.
+        </p>
+      </div>
+    </Card>
+  );
+}
+
+// Fixed 3×3 layout: the Volatility × Contribution matrix (rows 1–2) + the three
+// lifecycle buckets (row 3). Every slot ALWAYS renders — a real card when the
+// segment is present (even at zero count), a placeholder otherwise.
+const MATRIX_SLOTS: { name: string; vol: string; lvl: string }[] = [
+  { name: "Stable High contributors", vol: "stable", lvl: "high" },
+  { name: "Stable Mid contributors", vol: "stable", lvl: "mid" },
+  { name: "Stable Low contributors", vol: "stable", lvl: "low" },
+  { name: "Volatile High contributors", vol: "volatile", lvl: "high" },
+  { name: "Volatile Mid contributors", vol: "volatile", lvl: "mid" },
+  { name: "Volatile Low contributors", vol: "volatile", lvl: "low" },
+];
+const LIFECYCLE_SLOTS: { name: string; match: string }[] = [
+  { name: "Churned", match: "churn" },
+  { name: "New Product", match: "new" },
+  { name: "Short History", match: "short" },
+];
+
 /**
- * Profile & Route segment cards. ALL segments — the Volatility × Contribution
- * matrix, lifecycle overrides and the CV-NULL triage bucket — render in ONE
- * continuous 4-column grid. Phase Y.18: cards size to their CONTENT (no forced
- * equal height / footer anchoring), so heights may differ and there is no empty
- * vertical space. Matrix cards are always shown (the playbook stays visible even
- * at zero count); lifecycle / triage cards appear when populated. Responsive:
- * 1 col (mobile) → 2 (tablet) → 4 (desktop).
+ * Profile & Route segment cards in a STABLE 3×3 grid (responsive 1 → 2 → 3).
+ * Equal width (grid columns) and equal height (row stretch + h-full cards).
+ * Empty segments still render a placeholder so the grid never collapses.
+ * READ-ONLY: real cards come from the segment's stored `architecture` recipe;
+ * no routing / forecast logic runs.
  */
 export function SegmentArchitecture({
   segments,
@@ -139,16 +170,31 @@ export function SegmentArchitecture({
   revenueBasis?: "revenue" | "volume";
 }) {
   const revLabel = revenueBasis === "revenue" ? "rev" : "vol";
-  const matrix = segments.filter((s) => s.group === "matrix");
-  const lifecycle = segments.filter((s) => s.group === "lifecycle" && s.skuCount > 0);
-  const triage = segments.filter((s) => s.group === "triage" && s.skuCount > 0);
-  const cards = [...matrix, ...lifecycle, ...triage];
+  const find = (pred: (name: string) => boolean) =>
+    segments.find((s) => pred(s.segment.toLowerCase())) ?? null;
+
+  const slots = [
+    ...MATRIX_SLOTS.map((m) => ({
+      key: m.name,
+      name: m.name,
+      seg: find((n) => n.includes(m.vol) && n.includes(m.lvl)),
+    })),
+    ...LIFECYCLE_SLOTS.map((l) => ({
+      key: l.name,
+      name: l.name,
+      seg: find((n) => n.includes(l.match)),
+    })),
+  ];
 
   return (
-    <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {cards.map((s) => (
-        <ArchitectureCard key={s.segment} seg={s} levelPlural={levelPlural} revLabel={revLabel} />
-      ))}
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {slots.map((slot) =>
+        slot.seg ? (
+          <ArchitectureCard key={slot.key} seg={slot.seg} levelPlural={levelPlural} revLabel={revLabel} />
+        ) : (
+          <PlaceholderCard key={slot.key} name={slot.name} levelPlural={levelPlural} />
+        ),
+      )}
     </div>
   );
 }

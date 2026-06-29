@@ -20,10 +20,46 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+def _install_causallearn_stub() -> None:
+    """DoWhy 0.11's package __init__ eagerly imports `causallearn` (for causal
+    *discovery* — e.g. `from causallearn.utils.KCI.KCI import KCI_CInd`). That dep
+    is intentionally NOT installed (it pulls a numpy-2 toolchain that breaks the
+    pinned numpy/pmdarima stack). Causal *effect estimation* — the only thing
+    this module uses (backdoor regression) — needs none of it. Register a
+    lightweight in-process stub so `causallearn.*` imports resolve and dowhy's
+    __init__ loads cleanly. The stub is never executed by the estimation path.
+    No package install, no env change."""
+    import sys, types, importlib.abc, importlib.machinery
+    if "causallearn" in sys.modules:
+        return
+
+    class _StubFinder(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+        def find_spec(self, name, path=None, target=None):
+            if name == "causallearn" or name.startswith("causallearn."):
+                return importlib.machinery.ModuleSpec(name, self)
+            return None
+
+        def create_module(self, spec):
+            mod = types.ModuleType(spec.name)
+            mod.__path__ = []  # treat every stub level as a package
+            return mod
+
+        def exec_module(self, module):  # any attribute → harmless no-op callable
+            module.__getattr__ = lambda _name: (lambda *a, **k: None)  # type: ignore
+
+    sys.meta_path.insert(0, _StubFinder())
+
+
 try:  # match the source's optional-import guard (lines 122–125)
     from dowhy import CausalModel
 except Exception:  # pragma: no cover - environment dependent
-    CausalModel = None  # type: ignore
+    # Retry after stubbing the (unnecessary) causallearn dependency so dowhy's
+    # __init__ imports without it. Bypasses ONLY the package initialization.
+    try:
+        _install_causallearn_stub()
+        from dowhy import CausalModel
+    except Exception:
+        CausalModel = None  # type: ignore
 
 try:
     import graphviz  # noqa: F401

@@ -31,7 +31,7 @@ export function ForecastMiniTrendChart({
       (d) => d != null && typeof d.date === "string",
     );
     const labels = rows.map((d) =>
-      formatDate(d.date, { month: "short", day: "numeric" }),
+      formatDate(d.date, { month: "short", year: "2-digit", day: undefined }),
     );
     // Emit only finite, non-stacked [label, value] points so the line/area
     // painter and animator never see undefined/null segments.
@@ -43,6 +43,16 @@ export function ForecastMiniTrendChart({
       if (Number.isFinite(d.forecast))
         forecast.push([label, d.forecast as number]);
     });
+
+    // Task 2 — bridge the actual→forecast handoff: seed the dashed forecast line
+    // with the LAST actual point so it connects smoothly (no visible gap). Only
+    // when they don't already share the boundary. Dashed styling is preserved
+    // (same series); the forecast values themselves are unchanged.
+    const lastActual = actual[actual.length - 1];
+    const firstForecast = forecast[0];
+    if (lastActual && firstForecast && lastActual[0] !== firstForecast[0]) {
+      forecast.unshift(lastActual);
+    }
 
     return {
       animationDuration: 600,
@@ -86,5 +96,5 @@ export function ForecastMiniTrendChart({
     };
   }, [series, resolvedMode]);
 
-  return <EChartBase option={option} height={height} />;
+  return <EChartBase option={option} height={height} slider />;
 }

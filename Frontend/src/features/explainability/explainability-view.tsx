@@ -50,7 +50,6 @@ import type { ForecastMetricRow, ForecastRunMetrics } from "@/types/forecast";
 // NOTE: Next's next/dynamic SWC transform requires the options ({ ssr:false })
 // to be an INLINE object literal per call — do not hoist it to a variable.
 const ChartSkeleton = () => <Skeleton className="h-64 w-full rounded-md" />;
-const ContributionBars = dynamic(() => import("./explainability-charts").then((m) => m.ContributionBars), { ssr: false, loading: ChartSkeleton });
 const WaterfallChart = dynamic(() => import("./explainability-charts").then((m) => m.WaterfallChart), { ssr: false, loading: ChartSkeleton });
 const HorizonStacked = dynamic(() => import("./explainability-charts").then((m) => m.HorizonStacked), { ssr: false, loading: ChartSkeleton });
 
@@ -141,6 +140,7 @@ function DriverTable({ rows }: { rows: DriverTableRow[] }) {
   if (!rows.length) {
     return <p className="text-sm text-muted-foreground">No contributing drivers were detected.</p>;
   }
+  const maxPct = Math.max(1, ...rows.map((r) => r.pct));
   const impactBadge = (impact: DriverTableRow["impact"]) =>
     impact === "High" ? "default" : impact === "Medium" ? "secondary" : "outline";
   return (
@@ -149,7 +149,7 @@ function DriverTable({ rows }: { rows: DriverTableRow[] }) {
         <thead className="bg-secondary/40 text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="px-3 py-2 text-left font-medium">Driver</th>
-            <th className="px-3 py-2 text-right font-medium">Contribution %</th>
+            <th className="px-3 py-2 text-left font-medium">Contribution</th>
             <th className="px-3 py-2 text-center font-medium">Direction</th>
             <th className="px-3 py-2 text-right font-medium">Impact</th>
           </tr>
@@ -158,7 +158,22 @@ function DriverTable({ rows }: { rows: DriverTableRow[] }) {
           {rows.map((r) => (
             <tr key={r.driver} className="border-t border-border/60">
               <td className="px-3 py-2 font-medium text-foreground">{r.driver}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{r.pct}%</td>
+              {/* Task 4 — inline mini contribution bar next to the % */}
+              <td className="px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-11 shrink-0 text-right text-xs tabular-nums text-foreground">{r.pct}%</span>
+                  <div className="h-2 min-w-[40px] flex-1 overflow-hidden rounded-full bg-secondary/70">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${Math.max(2, Math.min(100, (r.pct / maxPct) * 100))}%`,
+                        background:
+                          r.direction === "down" ? "#dc2626" : r.direction === "up" ? "#16a34a" : "#64748b",
+                      }}
+                    />
+                  </div>
+                </div>
+              </td>
               <td className="px-3 py-2 text-center">
                 <span
                   className={
@@ -187,9 +202,12 @@ function DriverTable({ rows }: { rows: DriverTableRow[] }) {
 /** A single labelled field in the summary card (Task 5). */
 function SummaryField({ label, value, accent }: { label: string; value: React.ReactNode; accent?: string }) {
   return (
-    <div className="space-y-0.5">
+    // min-w-0 lets the cell shrink in the grid; break-words wraps long champion
+    // labels (e.g. "Blend[median]:moe+prophet+…") instead of bleeding into the
+    // neighbouring Segment cell.
+    <div className="min-w-0 space-y-0.5">
       <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className={`text-sm font-semibold ${accent ?? "text-foreground"}`}>{value}</p>
+      <p className={`break-words text-sm font-semibold ${accent ?? "text-foreground"}`}>{value}</p>
     </div>
   );
 }
@@ -287,25 +305,12 @@ function ModelPanel({
     );
   }
 
-  // Phase Y.1 · Task 2 — every family (incl. Mixture-of-Experts) renders an
-  // explanation. MoE uses the full driver set via the default `display = rows`.
-  const rows = driverTableRows(contributions);
-  const pick = (labels: string[]) => rows.filter((r) => labels.includes(r.driver));
-  const exogRows = rows.filter((r) => !["Trend", "Seasonality", "Holiday", "Residual"].includes(r.driver));
-
-  // Choose which subset of drivers to emphasise per family (Task 3); all fall
-  // back to the full driver set when the emphasised subset is empty.
-  let display = rows;
-  if (family === "prophet") display = pick(["Trend", "Seasonality", "Holiday"]);
-  else if (family === "lightgbm" || family === "catboost")
-    display = [...pick(["Trend", "Seasonality", "Holiday"]), ...exogRows].sort((a, b) => b.pct - a.pct);
-  else if (family === "sarimax") display = [...pick(["Trend", "Seasonality"]), ...exogRows].sort((a, b) => b.pct - a.pct);
-  else if (family === "chronos") display = pick(["Trend", "Seasonality", "Residual"]);
-
+  // Task 5 — the per-driver contribution table that used to live here duplicated
+  // the Driver Importance table AND the Forecast Bridge waterfall. Keep ONLY the
+  // model-family narrative; the contribution numbers live in the bridge + table.
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">{FAMILY_INTRO[family]}</p>
-      <DriverTable rows={display.length ? display : rows} />
     </div>
   );
 }
@@ -396,7 +401,6 @@ export function ExplainabilityView() {
     [selectedPeriod, selectedDrivers, local.data],
   );
 
-  const driverPng = useChartPng();
   const waterfallPng = useChartPng();
   const horizonPng = useChartPng();
 
@@ -507,7 +511,6 @@ export function ExplainabilityView() {
           <SectionHeading icon={BarChart3}>Global Driver Contributions</SectionHeading>
           {localReady ? (
             <ExportBar
-              onPng={() => driverPng.exportPng(`explainability-drivers-${fileSafe(activeEntity)}.png`)}
               onCsv={() => downloadFile(`explainability-drivers-${fileSafe(activeEntity)}.csv`, driversToCsv(localContrib!, `Global drivers — ${activeEntity}`))}
             />
           ) : null}
@@ -515,24 +518,17 @@ export function ExplainabilityView() {
         {local.isLoading ? (
           <Skeleton className="h-72 w-full" />
         ) : localReady ? (
-          <>
-            <Card>
-              <CardContent className="space-y-2 pt-6">
-                <p className="text-sm font-medium text-foreground">
-                  Overall contribution across the entire forecast horizon
-                </p>
-                <ContributionBars contributions={localContrib!} onReady={driverPng.onReady} />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="space-y-3 pt-6">
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <Table2 className="size-4 text-primary" /> Driver Importance
-                </h3>
-                <DriverTable rows={driverRows} />
-              </CardContent>
-            </Card>
-          </>
+          // Task 4 — the standalone "Overall contribution" bar chart was removed;
+          // the contribution bars now render INLINE inside the Driver Importance
+          // table (compact, no duplicate chart).
+          <Card>
+            <CardContent className="space-y-3 pt-6">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Table2 className="size-4 text-primary" /> Driver Importance
+              </h3>
+              <DriverTable rows={driverRows} />
+            </CardContent>
+          </Card>
         ) : activeEntity ? (
           <EmptyState
             title="Estimated forecast drivers based on historical decomposition"

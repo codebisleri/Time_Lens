@@ -57,7 +57,7 @@ function ScenarioChart({ result }: { result: ScenarioRunResult }) {
     const orange = readCssVar("--warning") || "#ef7602";
     const pts = Array.isArray(result.series) ? result.series : [];
     const labels = pts.map((p) =>
-      formatDate(p.date, { month: "short", year: "numeric", day: undefined }),
+      formatDate(p.date, { month: "short", year: "2-digit", day: undefined }),
     );
     return {
       animationDuration: 500,
@@ -524,6 +524,34 @@ export function ScenarioPlanningView() {
           ) : null}
         </CardContent>
       </Card>
+
+      {/* Task 2 — sticky summary of the ACTIVE scenario inputs, so the planner
+          never loses sight of what they entered while scrolling the results.
+          Reads the store directly (instant updates, no API calls); flex-wraps on
+          small screens and stays pinned to the top of the viewport. */}
+      {adjustments.length > 0 ? (
+        <Card className="sticky top-2 z-20 border-brand-accent/40 bg-card/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/80">
+          <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-1.5 py-3">
+            <span className="text-[0.7rem] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+              Scenario inputs
+            </span>
+            {adjustments.map((a) => {
+              const v =
+                a.type === "Percentage Change"
+                  ? `${a.value >= 0 ? "+" : ""}${a.value}%`
+                  : a.type === "Set to New Value"
+                    ? `= ${a.value}`
+                    : `${a.value >= 0 ? "+" : ""}${a.value}`;
+              return (
+                <span key={a.feature} className="text-sm">
+                  <span className="font-medium text-foreground">{a.feature}</span>{" "}
+                  <span className="tabular-nums text-brand-accent">{v}</span>
+                </span>
+              );
+            })}
+          </CardContent>
+        </Card>
+      ) : null}
 
       {/* Task 4 — model / causal relationship graph, shown BEFORE Run Scenario so
           the planner understands how the selected drivers relate to demand. Derived

@@ -91,7 +91,7 @@ export function SkuDrilldown({ rows }: { rows: ForecastMetricRow[] }) {
 
       <div className="space-y-2">
         <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Held-out actual vs backtest forecast
+          Hold-out actual vs backtest forecast
         </h4>
         {detail.isLoading ? (
           <Skeleton className="h-[200px] w-full" />

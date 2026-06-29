@@ -444,6 +444,7 @@ export function ForecastResultsPanel({
   const [segment, setSegment] = useState(ALL);
   const [bandFilter, setBandFilter] = useState(ALL);
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("sku-asc");
   // Default the drill-down to the first SKU so it renders inline immediately —
   // no row click required (Streamlit shows the drill-down by default).
   const [active, setActive] = useState<ForecastMetricRow | null>(metrics.skus[0] ?? null);
@@ -463,6 +464,22 @@ export function ForecastResultsPanel({
       return true;
     });
   }, [metrics.skus, brand, segment, bandFilter, search]);
+
+  // Task 9 — sort the filtered rows. WMAPE uses test (falls back to train);
+  // "Error contribution" = WMAPE × forecast volume (biggest error mass first).
+  const sortedRows = useMemo(() => {
+    const arr = [...rows];
+    const wm = (s: ForecastMetricRow) => s.testWmape ?? s.trainWmape ?? Number.POSITIVE_INFINITY;
+    const err = (s: ForecastMetricRow) => (s.testWmape ?? 0) * (s.forecastTotal ?? 0);
+    switch (sortBy) {
+      case "sku-desc": arr.sort((a, b) => b.sku.localeCompare(a.sku)); break;
+      case "wmape-asc": arr.sort((a, b) => wm(a) - wm(b)); break;
+      case "wmape-desc": arr.sort((a, b) => wm(b) - wm(a)); break;
+      case "error-contrib": arr.sort((a, b) => err(b) - err(a)); break;
+      default: arr.sort((a, b) => a.sku.localeCompare(b.sku)); // sku-asc
+    }
+    return arr;
+  }, [rows, sortBy]);
 
   const k = metrics.kpis;
   const exportCsv = async (kind: string) => {
@@ -519,10 +536,24 @@ export function ForecastResultsPanel({
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input type="search" placeholder={`Search ${level}…`} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" aria-label={`Search ${level}`} />
           </div>
-          <div className="grid grid-cols-3 gap-2 sm:w-auto">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:w-auto sm:items-end">
             <div className="min-w-28"><Select ariaLabel="Brand" value={brand} onChange={setBrand} options={opt(brands)} /></div>
             <div className="min-w-28"><Select ariaLabel="Segment" value={segment} onChange={setSegment} options={opt(segments)} /></div>
             <div className="min-w-28"><Select ariaLabel="Band" value={bandFilter} onChange={setBandFilter} options={opt(["Good", "Review", "Poor", "No metric"])} /></div>
+            <div className="min-w-40">
+              <Select
+                ariaLabel="Sort by"
+                value={sortBy}
+                onChange={setSortBy}
+                options={[
+                  { value: "sku-asc", label: `${level} ↑` },
+                  { value: "sku-desc", label: `${level} ↓` },
+                  { value: "wmape-asc", label: "WMAPE ↑" },
+                  { value: "wmape-desc", label: "WMAPE ↓" },
+                  { value: "error-contrib", label: "Error contribution" },
+                ]}
+              />
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -530,7 +561,7 @@ export function ForecastResultsPanel({
       {/* All-models / per-SKU table */}
       <Card>
         <CardContent className="pt-6">
-          {rows.length ? (
+          {sortedRows.length ? (
             <div className="overflow-auto rounded-md border border-border">
               <table className="w-full text-sm">
                 <thead className="bg-secondary/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
@@ -545,7 +576,7 @@ export function ForecastResultsPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => (
+                  {sortedRows.map((r) => (
                     <tr key={r.id} className="border-t border-border/60">
                       <td className="px-3 py-1.5 font-mono text-xs">{r.sku}</td>
                       <td className="px-3 py-1.5">{r.strategyLabel}{r.overridden ? " ✱" : ""}</td>

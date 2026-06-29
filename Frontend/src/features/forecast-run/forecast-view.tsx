@@ -100,6 +100,15 @@ export function ForecastView() {
     [seg.data?.datasetId],
   );
   const savedHorizon = dataset.data?.config?.horizon ?? 12;
+  // Task 5 — forecast segmentation source, derived from the saved config using
+  // the SAME priority the backend worker applies: GENERATED when the "use
+  // generated" flag is on OR there is no uploaded segment column; UPLOADED
+  // otherwise. (Mirrors run.segmentSource; no API change.)
+  const segSource: "uploaded" | "generated" | null = dataset.data?.config
+    ? dataset.data.config.useGeneratedSegmentation || !dataset.data.config.segmentCol
+      ? "generated"
+      : "uploaded"
+    : null;
   // F.17 §6 — display term for the forecast level (drives "Inspect <level>",
   // "<level>s forecasted", table header, etc.).
   const levelLabel = useMemo(() => {
@@ -609,7 +618,17 @@ export function ForecastView() {
           ) : metrics.isError ? (
             <ErrorState title="Couldn’t load results" message={metrics.error?.message} onRetry={() => void metrics.refetch().catch(() => {})} />
           ) : metrics.data && metrics.data.skus.length ? (
-            <ForecastResultsPanel metrics={metrics.data} datasetId={seg.data?.datasetId} levelLabel={levelLabel} />
+            <div className="space-y-3">
+              {segSource ? (
+                <p className="text-xs text-muted-foreground">
+                  Forecast segmentation source:{" "}
+                  <span className="font-semibold text-foreground">
+                    {segSource === "generated" ? "Generated segmentation" : "Uploaded segmentation"}
+                  </span>
+                </p>
+              ) : null}
+              <ForecastResultsPanel metrics={metrics.data} datasetId={seg.data?.datasetId} levelLabel={levelLabel} />
+            </div>
           ) : (
             <EmptyState icon={Gauge} title="No forecasts yet" description="Configure the run above and click “Run forecasts”." />
           )}

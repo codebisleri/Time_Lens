@@ -69,6 +69,10 @@ export interface DataConfig {
   categoryCol: string | null;
   priceCol: string | null;
   segmentCol: string | null;
+  /** Profile & Route — when true, forecasts use the GENERATED segmentation and
+   *  ignore the uploaded segment column; when false (or no column) the uploaded
+   *  column is used if present. Drives forecastSegmentationSource on the backend. */
+  useGeneratedSegmentation?: boolean;
   brandCol: string | null;
   freq: string;
   horizon: number;

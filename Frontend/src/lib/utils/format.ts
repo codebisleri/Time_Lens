@@ -72,6 +72,12 @@ export function formatDate(iso: string, opts?: Intl.DateTimeFormatOptions) {
   }).format(new Date(iso));
 }
 
+/** Compact month-year for chart x-axes: "Jan 24" (MMM YY). Explicitly drops the
+ *  day (formatDate defaults to day:'numeric') and uses a 2-digit year. */
+export function formatMonthYear(iso: string) {
+  return formatDate(iso, { year: "2-digit", month: "short", day: undefined });
+}
+
 export function formatDateTime(iso: string) {
   return formatDate(iso, {
     hour: "2-digit",

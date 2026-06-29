@@ -22,6 +22,9 @@ interface EChartBaseProps {
   /** Inject the shared enterprise toolbar (save / zoom / restore / fullscreen +
    *  scroll-zoom) on cartesian charts. Default true. */
   toolbar?: boolean;
+  /** Add a bottom range-slider dataZoom (drag/select-area zoom) on cartesian
+   *  charts, in addition to the toolbox box-zoom + restore. Default false. */
+  slider?: boolean;
   /** Receives the live ECharts instance once initialized (and null on dispose).
    *  Read-only escape hatch for features like PNG export — never mutate state. */
   onReady?: (chart: echarts.ECharts | null) => void;
@@ -42,6 +45,7 @@ function withChartControls(
   opt: EChartsOption,
   el: HTMLDivElement | null,
   enableToolbar: boolean,
+  enableSlider = false,
 ): EChartsOption {
   const o = { ...(opt as Record<string, unknown>) } as Record<string, unknown>;
   // Issue 3 — kill the animator (no interpolation = no crash). Charts opting in
@@ -97,8 +101,18 @@ function withChartControls(
           icon: FULLSCREEN_ICON,
           onclick: () => {
             try {
-              if (document.fullscreenElement) void document.exitFullscreen();
-              else void el?.requestFullscreen?.();
+              if (document.fullscreenElement) {
+                void document.exitFullscreen();
+                if (el) el.style.background = "";
+              } else if (el) {
+                // Match the app theme so fullscreen stays LIGHT in light mode —
+                // otherwise the native fullscreen backdrop renders black.
+                const bg = getComputedStyle(document.documentElement)
+                  .getPropertyValue("--background")
+                  .trim();
+                el.style.background = bg ? `hsl(${bg})` : "";
+                void el.requestFullscreen?.();
+              }
             } catch {
               /* fullscreen unsupported — no-op */
             }
@@ -108,37 +122,67 @@ function withChartControls(
     };
   }
 
-  // Phase X.I · Task 4 — mouse-wheel / trackpad-scroll zoom is DISABLED globally
-  // so scrolling the page never accidentally rescales a chart. Zoom is
-  // user-controlled ONLY via the toolbox "Box zoom" button (toolbox.dataZoom),
-  // with "Reset zoom" (toolbox.restore) restoring the original scale. The
-  // `inside` zoom is kept (for panning a box-zoomed view) but with wheel/move
-  // disabled. Tooltip, hover and click are unaffected; wheel events pass to the
-  // page so normal scrolling works.
+  // Issue 2 — reserve a top band so the toolbox icons never overlap the plot /
+  // data labels. Only for a single cartesian grid whose top is unset or too
+  // small; multi-grid charts (e.g. seasonal decomposition) and %/string tops are
+  // left untouched, and the ECharts default grid (~60px top) already clears it.
+  if (o.grid && !Array.isArray(o.grid)) {
+    const g = { ...(o.grid as Record<string, unknown>) };
+    const top = g.top;
+    if (top === undefined || (typeof top === "number" && top < 30)) {
+      g.top = 32;
+      o.grid = g;
+    }
+  }
+
+  // Plain mouse wheel must ALWAYS scroll the PAGE; the chart only zooms on
+  // Ctrl+wheel (or the toolbox "Box zoom"/drag). Normalize EVERY `inside`
+  // dataZoom (ours OR chart-defined) so `zoomOnMouseWheel: "ctrl"` and wheel-pan
+  // off; add one when none exists. Tooltip/hover/click unaffected.
   const existing = Array.isArray(o.dataZoom)
     ? (o.dataZoom as unknown[])
     : o.dataZoom
       ? [o.dataZoom]
       : [];
-  const hasInside = existing.some(
+  const normalized = existing.map((d) => {
+    const dz = { ...(d as Record<string, unknown>) };
+    if (dz.type === "inside") {
+      dz.zoomOnMouseWheel = "ctrl"; // Ctrl+wheel zooms; plain wheel scrolls page
+      dz.moveOnMouseWheel = false; // no wheel pan (page scroll passes through)
+      if (dz.moveOnMouseMove === undefined) dz.moveOnMouseMove = false;
+    }
+    return dz;
+  });
+  const hasInside = normalized.some(
     (d) => (d as Record<string, unknown>)?.type === "inside",
   );
   if (!hasInside) {
-    o.dataZoom = [
-      ...existing,
-      {
-        type: "inside",
-        zoomOnMouseWheel: false, // ← no wheel zoom
-        moveOnMouseWheel: false, // ← no wheel pan (page scroll passes through)
-        moveOnMouseMove: false, // keep hover/tooltip working
-        throttle: 50,
-      },
-    ];
+    normalized.push({
+      type: "inside",
+      zoomOnMouseWheel: "ctrl",
+      moveOnMouseWheel: false,
+      moveOnMouseMove: false,
+      throttle: 50,
+    });
   }
+  // Task 10 — opt-in bottom range slider (drag + select-area zoom) on top of the
+  // toolbox box-zoom/restore. Reserve bottom grid space on single-grid charts.
+  if (enableSlider && !normalized.some((d) => (d as Record<string, unknown>)?.type === "slider")) {
+    normalized.push({ type: "slider", bottom: 2, height: 16, brushSelect: false, throttle: 50 });
+    if (o.grid && !Array.isArray(o.grid)) {
+      const g = { ...(o.grid as Record<string, unknown>) };
+      const b = g.bottom;
+      if (b === undefined || (typeof b === "number" && b < 40)) {
+        g.bottom = 44;
+        o.grid = g;
+      }
+    }
+  }
+  o.dataZoom = normalized;
   return o as EChartsOption;
 }
 
-export function EChartBase({ option, className, height = 320, toolbar = true, onReady }: EChartBaseProps) {
+export function EChartBase({ option, className, height = 320, toolbar = true, slider = false, onReady }: EChartBaseProps) {
   const ref = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
   const { resolvedMode, mounted } = useThemeMode();
@@ -168,7 +212,7 @@ export function EChartBase({ option, className, height = 320, toolbar = true, on
     // `option` reference may be unchanged — so the separate update effect below
     // would not fire for it. Seeding here guarantees a new instance gets data.
     instance.setOption(
-      withChartControls(sanitizeEChartsOption(optionRef.current ?? {}), ref.current, toolbar),
+      withChartControls(sanitizeEChartsOption(optionRef.current ?? {}), ref.current, toolbar, slider),
     );
 
     const observer = new ResizeObserver(() => instance.resize());
@@ -181,7 +225,7 @@ export function EChartBase({ option, className, height = 320, toolbar = true, on
       onReadyRef.current?.(null);
     };
     // Recreate on theme change to pick up the new registered theme.
-  }, [mounted, themeKey, toolbar]);
+  }, [mounted, themeKey, toolbar, slider]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -194,9 +238,9 @@ export function EChartBase({ option, className, height = 320, toolbar = true, on
     // instead of interpolating across mismatched arrays.
     chart.clear();
     chart.setOption(
-      withChartControls(sanitizeEChartsOption(option), ref.current, toolbar),
+      withChartControls(sanitizeEChartsOption(option), ref.current, toolbar, slider),
     );
-  }, [option, toolbar]);
+  }, [option, toolbar, slider]);
 
   return (
     <div

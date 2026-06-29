@@ -1,0 +1,479 @@
+{
+ "workers": 8,
+ "cpu_count": 8,
+ "n_skus": 24,
+ "min_skus_threshold": 16,
+ "processpool_enabled": true,
+ "batches": [
+  {
+   "batch": 1,
+   "rid": "audit_1_185ab365",
+   "wall_s": 530.5417418999996,
+   "pid_taskcount": {
+    "18696": 3,
+    "17372": 4,
+    "23344": 3,
+    "21356": 3,
+    "2468": 3,
+    "18584": 3,
+    "24672": 3,
+    "18312": 2
+   },
+   "distinct_pids": 8,
+   "pool_id": 2233544412112,
+   "tasks": [
+    {
+     "sku": "ACC1009",
+     "pid": 18696,
+     "queue_wait_s": 21.09412455558777,
+     "compute_s": 81.96555100000023,
+     "return_s": 0.001994609832763672,
+     "err": null,
+     "champion": "catboost"
+    },
+    {
+     "sku": "ACC1080",
+     "pid": 17372,
+     "queue_wait_s": 19.5601487159729,
+     "compute_s": 95.96875940000064,
+     "return_s": 0.0,
+     "err": null,
+     "champion": "theta"
+    },
+    {
+     "sku": "BAG1076",
+     "pid": 23344,
+     "queue_wait_s": 19.717508554458618,
+     "compute_s": 101.77807790000043,
+     "return_s": 0.004990339279174805,
+     "err": null,
+     "champion": "blend[median]:tsb+xgb_quantile_90+catboost"
+    },
+    {
+     "sku": "BAG1031",
+     "pid": 21356,
+     "queue_wait_s": 19.497578620910645,
+     "compute_s": 107.51598079999985,
+     "return_s": 0.0019958019256591797,
+     "err": null,
+     "champion": "blend[wmean]:theta+holt_winters+catboost"
+    },
+    {
+     "sku": "APP1110",
+     "pid": 2468,
+     "queue_wait_s": 19.61447525024414,
+     "compute_s": 108.32399989999976,
+     "return_s": 0.0015079975128173828,
+     "err": null,
+     "champion": "theta"
+    },
+    {
+     "sku": "ACC1004",
+     "pid": 18584,
+     "queue_wait_s": 20.406070470809937,
+     "compute_s": 110.4712214000001,
+     "return_s": 0.002007007598876953,
+     "err": null,
+     "champion": "theta"
+    },
+    {
+     "sku": "FOO1062",
+     "pid": 24672,
+     "queue_wait_s": 19.692686557769775,
+     "compute_s": 119.83830639999996,
+     "return_s": 0.000997304916381836,
+     "err": null,
+     "champion": "blend[median]:xgb_quantile_90+moe+catboost"
+    },
+    {
+     "sku": "ACC1117",
+     "pid": 18312,
+     "queue_wait_s": 19.66125202178955,
+     "compute_s": 126.28634779999993,
+     "return_s": 0.0009975433349609375,
+     "err": null,
+     "champion": "blend[median]:local_sarimax_promo+moe+holt_winters"
+    },
+    {
+     "sku": "ACC1015",
+     "pid": 18696,
+     "queue_wait_s": 103.03995418548584,
+     "compute_s": 76.07745609999984,
+     "return_s": 0.0012295246124267578,
+     "err": null,
+     "champion": "blend[median]:catboost+moe+holt_winters"
+    },
+    {
+     "sku": "ACC1018",
+     "pid": 17372,
+     "queue_wait_s": 115.37772250175476,
+     "compute_s": 73.06833759999972,
+     "return_s": 0.0,
+     "err": null,
+     "champion": "blend[median]:moe+catboost+holt_winters"
+    },
+    {
+     "sku": "ACC1032",
+     "pid": 21356,
+     "queue_wait_s": 126.84291672706604,
+     "compute_s": 62.65756879999935,
+     "return_s": 0.000997304916381836,
+     "err": null,
+     "champion": "moe"
+    },
+    {
+     "sku": "ACC1041",
+     "pid": 2468,
+     "queue_wait_s": 127.81554007530212,
+     "compute_s": 63.84659929999998,
+     "return_s": 0.0009961128234863281,
+     "err": null,
+     "champion": "blend[wmean]:theta+catboost+holt_winters"
+    },
+    {
+     "sku": "ACC1029",
+     "pid": 23344,
+     "queue_wait_s": 121.43477630615234,
+     "compute_s": 70.53124410000055,
+     "return_s": 0.0005095005035400391,
+     "err": null,
+     "champion": "blend[median]:moe+catboost+holt_winters"
+    },
+    {
+     "sku": "ACC1045",
+     "pid": 18584,
+     "queue_wait_s": 130.8359112739563,
+     "compute_s": 72.48290389999966,
+     "return_s": 0.0,
+     "err": null,
+     "champion": "blend[median]:holt_winters+catboost+moe"
+    },
+    {
+     "sku": "ACC1059",
+     "pid": 17372,
+     "queue_wait_s": 188.45350050926208,
+     "compute_s": 19.052523000000292,
+     "return_s": 0.0010001659393310547,
+     "err": null,
+     "champion": "holt_winters"
+    },
+    {
+     "sku": "ACC1046",
+     "pid": 24672,
+     "queue_wait_s": 139.44828176498413,
+     "compute_s": 79.80354140000054,
+     "return_s": 0.010723352432250977,
+     "err": null,
+     "champion": "blend[median]:moe+local_sarimax_promo+catboost"
+    },
+    {
+     "sku": "ACC1049",
+     "pid": 18312,
+     "queue_wait_s": 145.84672474861145,
+     "compute_s": 84.29816549999941,
+     "return_s": 0.0019965171813964844,
+     "err": null,
+     "champion": "blend[wmean]:theta+catboost+holt_winters"
+    },
+    {
+     "sku": "ACC1060",
+     "pid": 21356,
+     "queue_wait_s": 189.50684475898743,
+     "compute_s": 43.36590160000014,
+     "return_s": 0.0015027523040771484,
+     "err": null,
+     "champion": "local_sarimax_promo"
+    },
+    {
+     "sku": "ACC1063",
+     "pid": 2468,
+     "queue_wait_s": 191.6691493988037,
+     "compute_s": 105.93161679999957,
+     "return_s": 0.001508474349975586,
+     "err": null,
+     "champion": "blend[wmean]:theta+catboost+holt_winters"
+    },
+    {
+     "sku": "ACC1065",
+     "pid": 23344,
+     "queue_wait_s": 191.9726538658142,
+     "compute_s": 117.00892879999992,
+     "return_s": 0.000507354736328125,
+     "err": null,
+     "champion": "blend[wmean]:holt_winters+local_sarimax_promo+theta"
+    },
+    {
+     "sku": "ACC1066",
+     "pid": 18584,
+     "queue_wait_s": 203.32458686828613,
+     "compute_s": 105.67019210000035,
+     "return_s": 0.0010590553283691406,
+     "err": null,
+     "champion": "moe"
+    },
+    {
+     "sku": "ACC1068",
+     "pid": 24672,
+     "queue_wait_s": 219.2658281326294,
+     "compute_s": 101.28864809999959,
+     "return_s": 0.000997304916381836,
+     "err": null,
+     "champion": "blend[median]:moe+catboost+xgb_quantile_90"
+    },
+    {
+     "sku": "ACC1067",
+     "pid": 17372,
+     "queue_wait_s": 207.50612235069275,
+     "compute_s": 121.5334240000002,
+     "return_s": 0.0009968280792236328,
+     "err": null,
+     "champion": "blend[median]:catboost+holt_winters+local_sarimax_promo"
+    },
+    {
+     "sku": "ACC1050",
+     "pid": 18696,
+     "queue_wait_s": 179.124329328537,
+     "compute_s": 351.24927000000025,
+     "return_s": 0.0160825252532959,
+     "err": null,
+     "champion": "blend[median]:prophet+tsb+catboost"
+    }
+   ]
+  },
+  {
+   "batch": 2,
+   "rid": "audit_2_2b66345f",
+   "wall_s": 1186.3843766999998,
+   "pid_taskcount": {
+    "18696": 3,
+    "21356": 4,
+    "24672": 3,
+    "2468": 3,
+    "18312": 3,
+    "17372": 3,
+    "18584": 3,
+    "23344": 2
+   },
+   "distinct_pids": 8,
+   "pool_id": 2233544412112,
+   "tasks": [
+    {
+     "sku": "ACC1009",
+     "pid": 18696,
+     "queue_wait_s": 0.0,
+     "compute_s": 46.296127000000524,
+     "return_s": 0.0024728775024414062,
+     "err": null,
+     "champion": "catboost"
+    },
+    {
+     "sku": "ACC1080",
+     "pid": 21356,
+     "queue_wait_s": 0.0,
+     "compute_s": 64.20536900000025,
+     "return_s": 0.002006053924560547,
+     "err": null,
+     "champion": "theta"
+    },
+    {
+     "sku": "BAG1076",
+     "pid": 24672,
+     "queue_wait_s": 0.0,
+     "compute_s": 84.80872460000046,
+     "return_s": 0.0,
+     "err": null,
+     "champion": "blend[median]:tsb+xgb_quantile_90+catboost"
+    },
+    {
+     "sku": "APP1110",
+     "pid": 2468,
+     "queue_wait_s": 0.0,
+     "compute_s": 95.68384909999986,
+     "return_s": 0.0009965896606445312,
+     "err": null,
+     "champion": "theta"
+    },
+    {
+     "sku": "BAG1031",
+     "pid": 18312,
+     "queue_wait_s": 0.0,
+     "compute_s": 99.3244979000001,
+     "return_s": 0.0,
+     "err": null,
+     "champion": "blend[wmean]:theta+holt_winters+catboost"
+    },
+    {
+     "sku": "ACC1004",
+     "pid": 17372,
+     "queue_wait_s": 0.0,
+     "compute_s": 104.99737150000055,
+     "return_s": 0.002027273178100586,
+     "err": null,
+     "champion": "theta"
+    },
+    {
+     "sku": "FOO1062",
+     "pid": 18584,
+     "queue_wait_s": 0.0,
+     "compute_s": 117.09206119999999,
+     "return_s": 0.0009970664978027344,
+     "err": null,
+     "champion": "blend[median]:xgb_quantile_90+moe+catboost"
+    },
+    {
+     "sku": "ACC1117",
+     "pid": 23344,
+     "queue_wait_s": 0.0,
+     "compute_s": 239.89268850000008,
+     "return_s": 0.01286935806274414,
+     "err": null,
+     "champion": "blend[median]:local_sarimax_promo+moe+holt_winters"
+    },
+    {
+     "sku": "ACC1015",
+     "pid": 18696,
+     "queue_wait_s": 46.30252003669739,
+     "compute_s": 279.65355329999966,
+     "return_s": 0.002035379409790039,
+     "err": null,
+     "champion": "blend[median]:catboost+moe+holt_winters"
+    },
+    {
+     "sku": "ACC1018",
+     "pid": 21356,
+     "queue_wait_s": 64.21048855781555,
+     "compute_s": 285.8304250000001,
+     "return_s": 0.0020003318786621094,
+     "err": null,
+     "champion": "blend[median]:moe+catboost+holt_winters"
+    },
+    {
+     "sku": "ACC1059",
+     "pid": 21356,
+     "queue_wait_s": 350.0388445854187,
+     "compute_s": 27.13438750000023,
+     "return_s": 0.001512289047241211,
+     "err": null,
+     "champion": "holt_winters"
+    },
+    {
+     "sku": "ACC1032",
+     "pid": 2468,
+     "queue_wait_s": 95.6893105506897,
+     "compute_s": 282.716316,
+     "return_s": 0.001990795135498047,
+     "err": null,
+     "champion": "moe"
+    },
+    {
+     "sku": "ACC1029",
+     "pid": 24672,
+     "queue_wait_s": 84.81451344490051,
+     "compute_s": 295.3452379999999,
+     "return_s": 0.0010106563568115234,
+     "err": null,
+     "champion": "blend[median]:moe+catboost+holt_winters"
+    },
+    {
+     "sku": "ACC1041",
+     "pid": 18312,
+     "queue_wait_s": 99.32966208457947,
+     "compute_s": 285.58156080000026,
+     "return_s": 0.0010006427764892578,
+     "err": null,
+     "champion": "blend[wmean]:theta+catboost+holt_winters"
+    },
+    {
+     "sku": "ACC1046",
+     "pid": 18584,
+     "queue_wait_s": 117.10726571083069,
+     "compute_s": 275.9759053000007,
+     "return_s": 0.0011715888977050781,
+     "err": null,
+     "champion": "blend[median]:moe+local_sarimax_promo+catboost"
+    },
+    {
+     "sku": "ACC1045",
+     "pid": 17372,
+     "queue_wait_s": 105.00382447242737,
+     "compute_s": 297.6130078999995,
+     "return_s": 0.0,
+     "err": null,
+     "champion": "blend[median]:holt_winters+catboost+moe"
+    },
+    {
+     "sku": "ACC1049",
+     "pid": 23344,
+     "queue_wait_s": 239.9058334827423,
+     "compute_s": 167.12605410000015,
+     "return_s": 0.0,
+     "err": null,
+     "champion": "blend[wmean]:theta+catboost+holt_winters"
+    },
+    {
+     "sku": "ACC1060",
+     "pid": 21356,
+     "queue_wait_s": 377.1735293865204,
+     "compute_s": 33.35820180000064,
+     "return_s": 0.002006053924560547,
+     "err": null,
+     "champion": "local_sarimax_promo"
+    },
+    {
+     "sku": "ACC1063",
+     "pid": 2468,
+     "queue_wait_s": 378.4025845527649,
+     "compute_s": 168.4621121,
+     "return_s": 0.0029914379119873047,
+     "err": null,
+     "champion": "blend[wmean]:theta+catboost+holt_winters"
+    },
+    {
+     "sku": "ACC1066",
+     "pid": 18312,
+     "queue_wait_s": 384.91093254089355,
+     "compute_s": 181.63309389999995,
+     "return_s": 0.0009922981262207031,
+     "err": null,
+     "champion": "moe"
+    },
+    {
+     "sku": "ACC1065",
+     "pid": 24672,
+     "queue_wait_s": 380.1561415195465,
+     "compute_s": 199.93038940000042,
+     "return_s": 0.0009970664978027344,
+     "err": null,
+     "champion": "blend[wmean]:holt_winters+local_sarimax_promo+theta"
+    },
+    {
+     "sku": "ACC1068",
+     "pid": 17372,
+     "queue_wait_s": 402.61140513420105,
+     "compute_s": 177.4827747999998,
+     "return_s": 0.0009951591491699219,
+     "err": null,
+     "champion": "blend[median]:moe+catboost+xgb_quantile_90"
+    },
+    {
+     "sku": "ACC1067",
+     "pid": 18584,
+     "queue_wait_s": 393.0779221057892,
+     "compute_s": 220.90320300000076,
+     "return_s": 0.002649545669555664,
+     "err": null,
+     "champion": "blend[median]:catboost+holt_winters+local_sarimax_promo"
+    },
+    {
+     "sku": "ACC1050",
+     "pid": 18696,
+     "queue_wait_s": 325.9542455673218,
+     "compute_s": 860.4261904999994,
+     "return_s": 0.0017387866973876953,
+     "err": null,
+     "champion": "blend[median]:prophet+tsb+catboost"
+    }
+   ]
+  }
+ ]
+}

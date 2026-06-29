@@ -196,7 +196,7 @@ function BrandTab({ data }: { data: ForecastRunMetrics }) {
               </p>
             </div>
             <div className="rounded-lg border border-border bg-secondary/30 p-3">
-              <p className="text-xs text-muted-foreground">Held-out volume</p>
+              <p className="text-xs text-muted-foreground">Hold-out volume</p>
               <p className="mt-1 text-lg font-semibold tabular-nums">
                 {formatNumber(Math.round(sel?.volume ?? 0))}
               </p>

@@ -140,6 +140,32 @@ export function ProfileRouteView() {
     if (datasetMeta.data?.config) setForecastLevelLabel(levelLabel);
   }, [levelLabel, datasetMeta.data, setForecastLevelLabel]);
 
+  // Tasks 3-4 — "Use newly generated segmentation for forecasts" toggle. Shown
+  // ONLY when an uploaded segment column exists; otherwise the generated
+  // segmentation is mandatory and no checkbox appears. Persists
+  // config.useGeneratedSegmentation so the forecast worker resolves the source.
+  // No forecasting logic changes — segmentation calculations are untouched.
+  const config = datasetMeta.data?.config;
+  const hasSegmentColumn = !!config?.segmentCol;
+  const [useGenerated, setUseGenerated] = useState(false);
+  useEffect(() => {
+    setUseGenerated(!!config?.useGeneratedSegmentation);
+  }, [config?.useGeneratedSegmentation]);
+  const toggleUseGenerated = useCallback(
+    async (checked: boolean) => {
+      setUseGenerated(checked); // optimistic
+      if (!datasetId) return;
+      try {
+        await dataService.updateConfig(datasetId, { useGeneratedSegmentation: checked });
+        await datasetMeta.refetch().catch(() => {});
+      } catch {
+        setUseGenerated(!checked);
+        toast.error("Couldn't update the forecast segmentation source");
+      }
+    },
+    [datasetId, datasetMeta],
+  );
+
   const [metric, setMetric] = useState<string>("");
   // Default once the numeric columns load — prefer the backend's contribution
   // Phase X.Q · Task 7 — intelligent default in strict priority order:
@@ -311,6 +337,37 @@ export function ProfileRouteView() {
                 </p>
               ) : null}
             </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* Tasks 3-4 — forecast segmentation source control. Shown ONLY when an
+          uploaded segment column exists; otherwise the generated segmentation is
+          used automatically (mandatory) and no checkbox appears. Run Segmentation
+          stays available in BOTH cases (the page actions, above). */}
+      {!gated && hasSegmentColumn ? (
+        <Card>
+          <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
+                Forecast segmentation source
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                An uploaded{" "}
+                <code className="rounded bg-secondary px-1 py-0.5 text-[0.7rem]">{config?.segmentCol}</code>{" "}
+                column was detected. Forecasts use it by default — tick the box to use the newly
+                generated segmentation instead. You can still rerun segmentation either way.
+              </p>
+            </div>
+            <label className="flex shrink-0 items-center gap-2 text-sm font-medium text-foreground">
+              <input
+                type="checkbox"
+                checked={useGenerated}
+                onChange={(e) => void toggleUseGenerated(e.target.checked)}
+                aria-label="Use newly generated segmentation for forecasts"
+              />
+              Use newly generated segmentation for forecasts
+            </label>
           </CardContent>
         </Card>
       ) : null}

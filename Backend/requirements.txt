@@ -50,6 +50,19 @@ pyyaml
 # Phase 2 — CatBoost (used by the 'catboost' adapter / blends)
 catboost==1.2.10
 
+# ── Deep MoE (TensorFlow TimeSeriesMoE) — `dl_moe` candidate ────────────────
+# Enables the Keras Mixture-of-Experts forecaster (trend + Fourier-seasonality +
+# transformer experts, softmax-gated). Pinned to 2.15.x DELIBERATELY: it is the
+# last TF that (a) ships the Keras-2 API the engine uses (`tensorflow.keras`),
+# (b) has a native Windows / Python-3.11 CPU wheel, and (c) requires
+# numpy>=1.23.5,<2.0 — so it COEXISTS with the pinned numpy==1.24.3 / pmdarima
+# ABI (TF 2.16+ forces Keras 3 + numpy>=1.26 and would break that stack).
+# Install with numpy pinned so pip can't bump it:
+#     pip install "tensorflow-cpu==2.15.1" -c <(echo "numpy==1.24.3")
+# Note: TF 2.15 downgrades protobuf to <5 (4.25.x) — verified harmless here.
+# The engine still degrades to Holt-Winters if TF is absent/fails to import.
+tensorflow-cpu==2.15.1
+
 # REST API Bridge (api.py) — exposes the engine to the Next.js frontend
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
@@ -73,3 +86,8 @@ bcrypt==4.2.1                # password hashing for /auth endpoints
 # When absent the Causal tab degrades gracefully (structure graph + selectors,
 # "Causal estimation unavailable …" — never crashes).
 graphviz
+
+threadpoolctl>=3.1.0
+
+# Optional — enables Scenario causal effect estimation (DoWhy). Pairs with graphviz.
+dowhy>=0.11

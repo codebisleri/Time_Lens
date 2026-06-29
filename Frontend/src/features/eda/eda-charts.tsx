@@ -17,7 +17,8 @@ import type {
 } from "@/types/eda";
 
 function label(date: string): string {
-  return formatDate(date, { month: "short", year: "2-digit" });
+  // MMM YY (e.g. "Jan 24") — drop the day (formatDate defaults to day:'numeric').
+  return formatDate(date, { month: "short", year: "2-digit", day: undefined });
 }
 
 /** Trend — demand over time with a mean reference line. */

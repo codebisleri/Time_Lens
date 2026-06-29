@@ -113,12 +113,14 @@ export function PremiumLiveClock() {
       minRef.current?.setAttribute("transform", `rotate(${minA} 50 50)`);
       secRef.current?.setAttribute("transform", `rotate(${secA} 50 50)`);
 
-      // Day progress 00:00 → 24:00 around the outer ring + travelling pulse.
+      // Day progress 00:00 → 24:00 fills the outer ring.
       const dayProgress = (h * 3600 + m * 60 + s) / 86400;
       if (ringRef.current) {
         ringRef.current.style.strokeDashoffset = String(RING_C * (1 - dayProgress));
       }
-      pulseRef.current?.setAttribute("transform", `rotate(${dayProgress * 360} 50 50)`);
+      // Task 11 — the orange pulse travels WITH the hour hand (continuous), not
+      // on a separate 24-hour sweep, so the highlight always tracks the hour.
+      pulseRef.current?.setAttribute("transform", `rotate(${hourA} 50 50)`);
 
       raf = requestAnimationFrame(frame);
     };

@@ -227,7 +227,7 @@ export function SkuQualityScatter({
       grid: { left: 4, right: 16, top: 32, bottom: 36, containLabel: true },
       xAxis: {
         type: "log",
-        name: "Held-out volume (log)",
+        name: "Hold-out volume (log)",
         nameLocation: "middle",
         nameGap: 28,
       },

@@ -76,6 +76,7 @@ function defaultConfig(dataset: Dataset): DataConfig {
       categoryCol: m.category ?? null,
       priceCol: m.price ?? null,
       segmentCol: null,
+      useGeneratedSegmentation: false,
       brandCol: null,
       freq: dataset.frequency ?? "MS",
       horizon: 12,

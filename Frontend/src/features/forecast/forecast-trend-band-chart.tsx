@@ -39,7 +39,7 @@ export function ForecastTrendBandChart({
 
     const rows = Array.isArray(data) ? data : [];
     const labels = rows.map((d) =>
-      formatDate(d.date, { month: "short", day: "numeric" }),
+      formatDate(d.date, { month: "short", year: "2-digit", day: undefined }),
     );
 
     const n = rows.length;
@@ -311,5 +311,5 @@ export function ForecastTrendBandChart({
     };
   }, [data, resolvedMode]);
 
-  return <EChartBase option={option} height={height} />;
+  return <EChartBase option={option} height={height} slider />;
 }

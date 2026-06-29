@@ -57,12 +57,12 @@ export function ForecastSubmissionView() {
       />
       <SubmissionWorksheet />
 
-      {/* Phase Y.3 · Task 4 — forward navigation to the next step (Scenarios). */}
+      {/* Forward navigation to the next workflow step — Explainability. */}
       <div className="flex justify-end">
         <ContinueButton
-          href={routes.scenarios}
-          label="Continue to Scenarios"
-          loadingLabel="Loading Scenarios…"
+          href={routes.explainability}
+          label="Continue to Explainability"
+          loadingLabel="Loading Explainability…"
         />
       </div>
     </PageShell>
