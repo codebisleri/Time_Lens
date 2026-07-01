@@ -4,8 +4,9 @@ import { Suspense } from "react";
 import { motion } from "framer-motion";
 import { ShieldCheck } from "lucide-react";
 import { env } from "@/lib/constants/env";
-import { DhishaaiWordmark, TimeLensLogo } from "@/components/common/brand";
+import { DhishaaiWordmark } from "@/components/common/brand";
 import { PremiumLiveClock } from "@/components/layout/navbar/premium-live-clock";
+import { AnalogClock } from "@/components/common/analog-clock";
 import { LoginForm } from "./login-form";
 import { LoginAura } from "./login-aura";
 
@@ -145,7 +146,9 @@ export function LoginExperience() {
                     className="anim-pulse-soft pointer-events-none absolute -inset-2 rounded-3xl"
                     style={{ background: "radial-gradient(circle, rgba(239,118,2,0.5), transparent 70%)" }}
                   />
-                  <TimeLensLogo className="relative h-9 w-auto" />
+                  {/* Task 18 — the live animated analog clock (same component used
+                      in the header), navy on the white badge. */}
+                  <AnalogClock className="relative size-9 text-[#06243b]" />
                 </span>
                 <div className="space-y-1">
                   <h2 className="text-xl font-semibold tracking-tight text-white">

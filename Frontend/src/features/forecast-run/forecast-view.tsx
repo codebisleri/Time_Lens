@@ -17,6 +17,7 @@ import { useWorkflowStatus } from "@/features/workflow/use-workflow-status";
 import type {
   ForecastAlgorithms,
   ForecastJob,
+  ForecastMetricRow,
   ForecastRunMetrics,
   SingleSkuResult,
 } from "@/types/forecast";
@@ -84,6 +85,32 @@ const DEFAULT_CONFIG: RunConfig = {
 };
 
 /**
+ * Top-Down eligibility — the business rule, in ONE place. A SKU qualifies when its
+ * ROUTING segment contains "Volatile" AND its hold-out WMAPE exceeds 20%.
+ * Evaluates ONLY the SKUs in `selecting` (null ⇒ every forecasted SKU, i.e. the
+ * whole run set) — hidden / filtered-out items are never considered. Pure, so it
+ * runs identically on the live metrics state OR on the value `refetch()` returns
+ * (avoiding the stale-state race right after a run).
+ */
+function topDownCandidates(
+  rows: ForecastMetricRow[] | undefined,
+  selecting: Set<string> | null,
+): TopDownCandidate[] {
+  const out: TopDownCandidate[] = [];
+  for (const r of rows ?? []) {
+    if (selecting && !selecting.has(r.sku)) continue; // only the selected SKUs
+    const seg = r.routingSegment ?? r.segment ?? "";
+    if (!/volatile/i.test(seg)) continue; // Condition 1: Routing Segment ∋ "Volatile"
+    const w = r.testWmape ?? r.trainWmape;
+    if (w == null) continue;
+    const pct = w <= 1 ? w * 100 : w; // normalise a fraction (0–1) → percent
+    if (pct <= 20) continue; // Condition 2: WMAPE > 20%
+    out.push({ sku: r.sku, segment: seg, wmape: pct, reason: "Volatile · WMAPE > 20%" });
+  }
+  return out;
+}
+
+/**
  * Forecast — the unified Streamlit Forecast tab: configuration (what to forecast,
  * training options, algorithm competition) → run → results (KPIs, quality bands,
  * filters, all-models table, champion drill-down, exports). Gated on profiling.
@@ -136,12 +163,22 @@ export function ForecastView() {
     for (const e of levelAttrs.data?.entities ?? []) m.set(e.entity, e.attrs ?? {});
     return m;
   }, [levelAttrs.data]);
+  // Task 13 — drop the uploaded segment column from the dynamic filters so it
+  // never duplicates the synthetic, active-segmentation "Segment" filter added
+  // below. The synthetic SEGMENT_KEY reflects whichever segmentation is active
+  // (uploaded or generated), so it is the single correct Segment filter.
+  const segColKey = dataset.data?.config?.segmentCol ?? null;
   const attrColumns = useMemo(
     () => [
-      ...(levelAttrs.data?.columns ?? []),
+      ...(levelAttrs.data?.columns ?? []).filter(
+        (c) =>
+          c.key !== segColKey &&
+          c.key.toLowerCase() !== "segment" &&
+          c.label.toLowerCase() !== "segment",
+      ),
       { key: SEGMENT_KEY, label: "Segment" },
     ],
-    [levelAttrs.data],
+    [levelAttrs.data, segColKey],
   );
 
   const [config, setConfig] = useState<RunConfig>(DEFAULT_CONFIG);
@@ -156,6 +193,12 @@ export function ForecastView() {
   const [topDownQualifying, setTopDownQualifying] = useState<TopDownCandidate[]>([]);
   const setTopDownEnabled = useForecastStore((s) => s.setTopDownEnabled);
   const topDownEnabled = useForecastStore((s) => s.topDownEnabled);
+  // Top-Down popup bookkeeping. `topDownPhase` distinguishes a PRE-run recommendation
+  // (from prior metrics — choice then run) from a POST-run one (the run just produced
+  // the WMAPE — enable re-runs, "continue" keeps results). `topDownDecided` suppresses
+  // a re-popup on the choice-driven re-run until the next manual Run click.
+  const topDownPhase = useRef<"pre" | "post">("pre");
+  const topDownDecided = useRef(false);
   // Phase X.Q · Task 3 — the global benchmark algorithm set (persisted).
   const benchmarkAlgos = useForecastStore((s) => s.benchmarkAlgos);
   const setBenchmarkAlgos = useForecastStore((s) => s.setBenchmarkAlgos);
@@ -204,6 +247,10 @@ export function ForecastView() {
         sku: s.sku,
         brand: s.brand,
         segment: s.segment,
+        // Task 12 — carry volume (mean demand) + revenue so the SKU list can be
+        // sorted by them in the config panel.
+        meanSales: s.meanSales,
+        totalRevenue: s.totalRevenue,
         // Merge dataset categorical attrs with the computed Segment so every
         // dynamic filter column resolves from one place.
         attrs: { ...(attrsBySku.get(s.sku) ?? {}), [SEGMENT_KEY]: s.segment },
@@ -266,7 +313,9 @@ export function ForecastView() {
       setPhase("error");
       return;
     }
-    await metrics.refetch().catch(() => {});
+    // Use the VALUE refetch() returns (not the still-stale `metrics.data` state) so
+    // the post-run eligibility check sees THIS run's freshly-computed WMAPE.
+    const fresh = await metrics.refetch().catch(() => null);
     const produced = job.skuCount ?? 0;
     const total = job.total ?? 0;
     if (produced === 0) {
@@ -287,7 +336,23 @@ export function ForecastView() {
     }
     await workflowService.complete("forecast").catch(() => {});
     await workflow.refetch().catch(() => {});
-  }, [metrics, workflow]);
+
+    // POST-run Top-Down recommendation — now that THIS run's WMAPE is known,
+    // evaluate the SELECTED SKUs. If any are Volatile (routing) with WMAPE > 20%
+    // and the planner hasn't already decided, surface the popup (deterministic on
+    // the very first run, where no prior metrics existed). The choice-driven re-run
+    // sets `topDownDecided`, so this never loops.
+    if (!topDownDecided.current) {
+      const selecting =
+        config.selectionMode === "pick" ? new Set(config.skuIds) : null;
+      const qualifying = topDownCandidates(fresh?.skus, selecting);
+      if (qualifying.length) {
+        topDownPhase.current = "post";
+        setTopDownQualifying(qualifying);
+        setTopDownOpen(true);
+      }
+    }
+  }, [metrics, workflow, config.selectionMode, config.skuIds]);
 
   // Single-SKU Multi-Model Competition — dedicated single-series engine endpoint.
   const runSingleSku = useCallback(async () => {
@@ -407,50 +472,24 @@ export function ForecastView() {
       setPhase("error");
       return;
     }
-    // Phase X.Q · Task 9 — recommend Top-Down ONLY for entities with HIGH
-    // hold-out error (WMAPE > 20%) that are Volatile Low / Intermittent / Short
-    // History. WMAPE comes from the latest run's per-entity metrics; with no
-    // prior metrics nothing qualifies and the run starts directly (so the dialog
-    // is no longer aggressive — it appears only when there is real evidence).
-    const wmapeBySku = new Map<string, number>();
-    for (const r of metrics.data?.skus ?? []) {
-      if (r.testWmape == null) continue;
-      // Normalise a fraction (0–1) to a percent; leave an existing percent as-is.
-      wmapeBySku.set(r.sku, r.testWmape <= 1 ? r.testWmape * 100 : r.testWmape);
-    }
-    const intermBySku = new Map<string, string>();
-    for (const s of seg.data?.skus ?? []) {
-      intermBySku.set(s.sku, (s.intermittency ?? "").toLowerCase());
-    }
-    const isVolatileTarget = (segment: string, sku: string): boolean => {
-      const seg2 = (segment ?? "").toLowerCase();
-      const it = intermBySku.get(sku) ?? "";
-      return (
-        /volatile low/.test(seg2) ||
-        /short history/.test(seg2) ||
-        it === "intermittent" ||
-        it === "lumpy"
-      );
-    };
-
-    const allSkus = seg.data?.skus ?? [];
+    // Each manual Run is a fresh decision — re-enable the post-run recommendation.
+    topDownDecided.current = false;
+    // PRE-run recommendation: if the LATEST metrics already show that a selected,
+    // Volatile SKU has WMAPE > 20%, interrupt and recommend Top-Down before running.
+    // (On the very first run there are no metrics yet, so this is empty and the
+    // run starts — the POST-run check in finishPortfolio then evaluates the WMAPE
+    // this run produces, so the popup is deterministic for every case.)
     const selecting =
       config.selectionMode === "pick" ? new Set(config.skuIds) : null;
-    const candidates = selecting ? allSkus.filter((s) => selecting.has(s.sku)) : allSkus;
-    const qualifying: TopDownCandidate[] = [];
-    for (const s of candidates) {
-      const pct = wmapeBySku.get(s.sku);
-      if (pct == null || pct <= 20) continue; // WMAPE ≤ 20% ⇒ do NOT recommend
-      if (!isVolatileTarget(s.segment, s.sku)) continue;
-      qualifying.push({ sku: s.sku, segment: s.segment, wmape: pct, reason: "High forecast error" });
-    }
+    const qualifying = topDownCandidates(metrics.data?.skus, selecting);
     if (qualifying.length === 0) {
-      void run(); // no qualifying entities → run normally, no popup
+      void run(); // nothing qualifies yet → run; finishPortfolio re-checks post-run
       return;
     }
+    topDownPhase.current = "pre";
     setTopDownQualifying(qualifying);
     setTopDownOpen(true);
-  }, [config.forecastMode, config.selectionMode, config.skuIds, levelLabel, seg.data, metrics.data, run]);
+  }, [config.forecastMode, config.selectionMode, config.skuIds, levelLabel, metrics.data, run]);
 
   // Phase Y.3 · Task 6 — Cancel an in-flight run, frontend-side: stop polling
   // (pollUntilDone bails on `cancelled.current`), clear loading state, and return
@@ -464,13 +503,34 @@ export function ForecastView() {
     setJobMessage("");
     toast.message("Forecast cancelled");
   }, []);
+  // Record the planner's choice AND persist it to the dataset config so the
+  // forecast worker applies Top-Down to EXACTLY the eligible SKUs (Volatile +
+  // WMAPE>20%); "Continue Normally" clears the flag so the run is fully normal.
+  //   • PRE-run popup  — the run was deferred, so either choice now runs.
+  //   • POST-run popup — the (normal) run already produced results, so ONLY
+  //     "Run Top-Down" re-runs (applying Top-Down); "Continue Normally" keeps the
+  //     existing results without a redundant re-run.
+  // Either way `topDownDecided` is set so the choice-driven re-run doesn't re-popup.
   const resolveTopDown = useCallback(
-    (enabled: boolean) => {
+    async (enabled: boolean) => {
+      const phase = topDownPhase.current;
+      topDownDecided.current = true;
       setTopDownEnabled(enabled);
       setTopDownOpen(false);
-      void run();
+      const dsId = seg.data?.datasetId;
+      if (dsId) {
+        try {
+          await dataService.updateConfig(dsId, {
+            topDownEnabled: enabled,
+            topDownSkus: enabled ? topDownQualifying.map((q) => q.sku) : [],
+          });
+        } catch {
+          /* best-effort — the run still proceeds with the prior config */
+        }
+      }
+      if (phase === "pre" || enabled) void run();
     },
-    [run, setTopDownEnabled],
+    [run, setTopDownEnabled, seg.data, topDownQualifying],
   );
 
   // Reconnect to an in-flight run after a page refresh (Part 3).
@@ -583,8 +643,8 @@ export function ForecastView() {
             qualifying={topDownQualifying}
             levelLabel={levelLabel}
             levelPlural={levelPlural}
-            onEnable={() => resolveTopDown(true)}
-            onContinueWithout={() => resolveTopDown(false)}
+            onEnable={() => void resolveTopDown(true)}
+            onContinueWithout={() => void resolveTopDown(false)}
             onOpenChange={setTopDownOpen}
           />
 

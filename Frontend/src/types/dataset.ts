@@ -106,6 +106,9 @@ export interface DataConfig {
   };
   /** How to split an aggregate forecast back to each SKU. */
   topDownDisagg: string;
+  /** Task 19 — explicit eligible-SKU allowlist (Volatile segment + WMAPE>20%) the
+   *  Top-Down recommendation applies to. Empty ⇒ apply by `topDownApply` classes. */
+  topDownSkus?: string[];
 }
 
 /** Data preview + schema details (GET /datasets/{id}/preview). */

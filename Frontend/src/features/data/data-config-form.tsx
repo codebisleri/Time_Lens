@@ -64,6 +64,39 @@ export const EXOG_STRATEGIES: Opt[] = [
   { value: "explicit", label: "Enter explicit" },
 ];
 
+/**
+ * Auto-detect the uploaded dataset's segmentation column by name so the "Segment
+ * Column (optional)" dropdown pre-selects it instead of defaulting to (None).
+ *
+ * Matching is case-insensitive and ignores spaces / underscores / hyphens, so
+ * "Segment", "SEGMENTS", "SKU Segment", "segment label" and "forecast-segment"
+ * all match. When several columns qualify the highest-priority one wins; the user
+ * can still change it manually. Returns null when nothing looks like a segment
+ * column (Case 3 — keep the (None) default).
+ */
+export function detectSegmentColumn(columns: readonly string[]): string | null {
+  const norm = (s: string) => s.toLowerCase().replace(/[\s_-]+/g, "");
+  // Exact (normalised) matches, most-preferred first.
+  const PRIORITY = [
+    "segment",
+    "segments",
+    "segmentlabel",
+    "segmentname",
+    "skusegment",
+    "forecastsegment",
+  ];
+  for (const want of PRIORITY) {
+    const hit = columns.find((c) => norm(c) === want);
+    if (hit) return hit;
+  }
+  // Otherwise any obvious segment-like column (normalised name contains
+  // "segment"), preferring the simplest (shortest) name.
+  const contains = columns
+    .filter((c) => norm(c).includes("segment"))
+    .sort((a, b) => norm(a).length - norm(b).length);
+  return contains[0] ?? null;
+}
+
 function defaultConfig(dataset: Dataset): DataConfig {
   const m = dataset.detectedMapping ?? {};
   return (
@@ -75,7 +108,8 @@ function defaultConfig(dataset: Dataset): DataConfig {
       salesCol: m.sales ?? null,
       categoryCol: m.category ?? null,
       priceCol: m.price ?? null,
-      segmentCol: null,
+      // Pre-select an uploaded segmentation column when one is present.
+      segmentCol: detectSegmentColumn(dataset.columns ?? []),
       useGeneratedSegmentation: false,
       brandCol: null,
       freq: dataset.frequency ?? "MS",

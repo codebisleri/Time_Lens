@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import type { EChartsOption } from "echarts";
 import { EChartBase } from "@/components/charts/echart-base";
 import { useThemeMode } from "@/lib/theme/use-theme-mode";
+import { chartColors } from "@/lib/charts/colors";
 import { formatNumber } from "@/lib/utils/format";
 
 /**
@@ -17,10 +18,8 @@ import { formatNumber } from "@/lib/utils/format";
  *   • missing months stay null (connectNulls:false → no interpolation)
  */
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-// Distinct, theme-neutral palette for historical years (oldest→newer).
-const YEAR_COLORS = ["#94a3b8", "#64748b", "#0ea5e9", "#2563eb", "#7c3aed"];
-const CURRENT_COLOR = "#2563eb"; // highlighted current year
-const FORECAST_COLOR = "#10b981"; // dashed forecast continuation
+// Issue 4 — year/current/forecast colours are resolved from the theme palette at
+// render time (see the option memo) so they track Light/Dark; no hardcoded hex.
 
 interface SeriesPoint {
   date: string;
@@ -39,6 +38,10 @@ export function ForecastYoYChart({
 
   const option = useMemo<EChartsOption>(() => {
     void resolvedMode;
+    const c = chartColors();
+    const YEAR_COLORS = c.palette; // historical years (oldest→newer)
+    const CURRENT_COLOR = c.primary; // highlighted current year (navy)
+    const FORECAST_COLOR = c.accent; // dashed forecast continuation (orange)
     const rows = Array.isArray(series) ? series : [];
     const byYear = new Map<number, { actual: (number | null)[]; forecast: (number | null)[] }>();
     for (const p of rows) {

@@ -216,6 +216,12 @@ export function SkuQualityScatter({
     });
     return {
       animationDuration: 500,
+      // Task 11 — the option-level palette drives BOTH the legend icons and each
+      // series' colour by index, so the three legend entries are distinct and
+      // match their plotted points: Good=green, Review=amber, Poor=red (the 4th
+      // slot is the silent threshold line). Without this the legend fell back to a
+      // single palette colour while only the points carried an itemStyle colour.
+      color: [t.success, t.warning, t.destructive, t.muted],
       tooltip: {
         trigger: "item",
         formatter: (p: unknown) => {

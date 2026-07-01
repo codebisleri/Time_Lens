@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import type { EChartsOption } from "echarts";
 import { EChartBase } from "@/components/charts/echart-base";
 import { useThemeMode } from "@/lib/theme/use-theme-mode";
+import { chartColors } from "@/lib/charts/colors";
 import { formatCompact, formatDate, formatNumber } from "@/lib/utils/format";
 import type { ForecastBandPoint } from "./hooks/use-forecast-trend";
 
@@ -31,11 +32,13 @@ export function ForecastTrendBandChart({
 
   const option = useMemo<EChartsOption>(() => {
     void resolvedMode;
-    // Phase X.C · Task 3 — region color coding: historical = blue, test
-    // prediction = orange, future forecast = green (with matching shaded areas).
-    const actualColor = "#2563eb"; // blue — historical
-    const forecastColor = "#10b981"; // green — future forecast
-    const testColor = "#EF7602"; // orange — test prediction
+    // Phase X.C · Task 3 — region colour coding, theme-bound (Issue 4): historical
+    // = navy, future forecast = orange, test prediction = grey. Re-resolved on
+    // Light/Dark switch (memo keyed on resolvedMode); no hardcoded hex.
+    const c = chartColors();
+    const actualColor = c.primary; // navy — historical
+    const forecastColor = c.accent; // orange — future forecast
+    const testColor = c.neutral; // grey — test prediction
 
     const rows = Array.isArray(data) ? data : [];
     const labels = rows.map((d) =>

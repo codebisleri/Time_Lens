@@ -1,6 +1,14 @@
 /** Retail segmentation payloads (backend `/segmentation*`). */
 export type SegmentGroup = "matrix" | "lifecycle" | "triage";
 
+/**
+ * The two independent segmentation sources. `uploadedSegmentation` is the user's
+ * uploaded segment column (immutable); `generatedSegmentation` is computed by
+ * TimeLens. `activeSegmentation` references whichever of the two is in effect and
+ * is the ONLY source consumed by downstream modules.
+ */
+export type SegmentationSource = "uploaded" | "generated";
+
 /** Per-segment model-architecture recipe (drives the Segment Model Architecture cards). */
 export interface SegmentArchitecture {
   primary: string;
@@ -108,6 +116,10 @@ export interface SegmentationResult {
   routing: RoutingSummary;
   generatedAt: string;
   runId?: string | null;
+  /** Which source this payload represents (uploaded vs generated). */
+  source?: SegmentationSource;
+  /** Whether an uploaded segment column exists for the dataset. */
+  hasUploaded?: boolean;
 }
 
 export interface RoutingSummary {

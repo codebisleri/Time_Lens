@@ -9,6 +9,8 @@ import { EmptyState } from "@/components/feedback/empty-state";
 import { EChartBase } from "@/components/charts/echart-base";
 import { useAsync } from "@/lib/hooks";
 import { useThemeMode } from "@/lib/theme/use-theme-mode";
+import { readCssVar } from "@/lib/theme/theme-config";
+import { chartColors } from "@/lib/charts/colors";
 import { whatifService } from "@/lib/api/services";
 import type { CausalGraphResponse, CausalNodeRole } from "@/types/whatif";
 
@@ -22,15 +24,28 @@ import type { CausalGraphResponse, CausalNodeRole } from "@/types/whatif";
  * from the current selection without running DoWhy — no causal math changes.
  */
 
-// Node colours per the Phase Y.6 spec (Treatment orange · Outcome blue ·
-// Confounder gray · Instrument green · Effect modifier purple).
-const ROLE_META: Record<CausalNodeRole, { name: string; color: string }> = {
-  treatment: { name: "Treatment", color: "#ea580c" },
-  outcome: { name: "Outcome", color: "#2563eb" },
-  confounder: { name: "Confounder", color: "#94a3b8" },
-  instrument: { name: "Instrument", color: "#16a34a" },
-  effect_modifier: { name: "Effect modifier", color: "#9333ea" },
+// Node role labels. Colours are resolved from the theme palette at render time
+// (see `roleColors()` below) so the DAG tracks Light/Dark and stays on the brand
+// navy + orange + grey system instead of hardcoded blue / green / purple.
+const ROLE_META: Record<CausalNodeRole, { name: string }> = {
+  treatment: { name: "Treatment" },
+  outcome: { name: "Outcome" },
+  confounder: { name: "Confounder" },
+  instrument: { name: "Instrument" },
+  effect_modifier: { name: "Effect modifier" },
 };
+
+/** Theme-bound role colours (distinct slots of the brand chart palette). */
+function roleColors(): Record<CausalNodeRole, string> {
+  const c = chartColors();
+  return {
+    treatment: c.accent, // orange — the lever under test
+    outcome: c.primary, // navy — demand
+    confounder: c.neutral, // grey
+    instrument: c.palette[3]!, // light orange
+    effect_modifier: c.palette[5]!, // muted navy
+  };
+}
 const ROLE_ORDER: CausalNodeRole[] = [
   "treatment", "outcome", "confounder", "instrument", "effect_modifier",
 ];
@@ -83,7 +98,9 @@ export function CausalGraph({
     const edges = data?.edges ?? [];
     const present = ROLE_ORDER.filter((r) => nodes.some((n) => n.role === r));
     const roleIndex: Record<string, number> = Object.fromEntries(present.map((r, i) => [r, i]));
-    const labelColor = resolvedMode === "dark" ? "#e2e8f0" : "#0f172a";
+    const roleColor = roleColors();
+    const labelColor = readCssVar("--foreground") || (resolvedMode === "dark" ? "#e2e8f0" : "#0f172a");
+    const edgeColor = readCssVar("--muted-foreground") || (resolvedMode === "dark" ? "#64748b" : "#94a3b8");
     return {
       animationDuration: 400,
       tooltip: {
@@ -105,7 +122,7 @@ export function CausalGraph({
           itemHeight: 12,
         },
       ],
-      color: present.map((r) => ROLE_META[r].color),
+      color: present.map((r) => roleColor[r]),
       series: [
         {
           type: "graph",
@@ -130,7 +147,7 @@ export function CausalGraph({
           edgeSymbolSize: [0, 9],
           force: { repulsion: 320, edgeLength: 130, gravity: 0.08 },
           lineStyle: {
-            color: resolvedMode === "dark" ? "#64748b" : "#94a3b8",
+            color: edgeColor,
             width: 1.5,
             opacity: 0.85,
           },
@@ -139,7 +156,7 @@ export function CausalGraph({
             name: n.label,
             roleName: ROLE_META[n.role].name,
             category: roleIndex[n.role],
-            itemStyle: { color: ROLE_META[n.role].color },
+            itemStyle: { color: roleColor[n.role] },
           })),
           links: edges.map((e) => ({ source: e.source, target: e.target })),
         },

@@ -2,7 +2,7 @@
 
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { formatNumber } from "@/lib/utils/format";
+import { formatDate, formatNumber } from "@/lib/utils/format";
 import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import type { ReportSummary } from "@/types/report";
 
@@ -32,9 +32,16 @@ const BAND_TEXT: Record<string, string> = {
 export function ReportSummaryPanel({ summary }: { summary: ReportSummary }) {
   const { dataset, forecast, segments, topOpportunities } = summary;
   const { label: levelLabel, plural: levelPlural } = useForecastLevel();
+  // History span shows the DATE only (no 00:00:00 time component). formatDate
+  // strips the time; fall back to the leading YYYY-MM-DD if the value can't be
+  // parsed as a date so the tile never shows "Invalid Date".
+  const histDate = (s: string) => {
+    const d = new Date(s);
+    return Number.isNaN(d.getTime()) ? s.slice(0, 10) : formatDate(s);
+  };
   const dateRange =
     dataset.dateStart && dataset.dateEnd
-      ? `${dataset.dateStart} → ${dataset.dateEnd}`
+      ? `${histDate(dataset.dateStart)} → ${histDate(dataset.dateEnd)}`
       : "—";
   const maxSeg = Math.max(1, ...segments.distribution.map((s) => s.skuCount));
 

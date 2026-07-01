@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { EChartBase } from "@/components/charts/echart-base";
 import { useThemeMode } from "@/lib/theme/use-theme-mode";
+import { chartColors } from "@/lib/charts/colors";
 import { useAsync } from "@/lib/hooks";
 import { forecastService, whatifService } from "@/lib/api/services";
 import { formatNumber } from "@/lib/utils/format";
@@ -43,51 +44,6 @@ const METHODS: { id: string; label: string }[] = [
 
 function fmt(v: number | null | undefined, digits = 1): string {
   return v == null || !Number.isFinite(v) ? "—" : formatNumber(v, { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
-
-/** Lightweight checkbox multiselect (no external dep). */
-function Multi({
-  label,
-  options,
-  value,
-  onChange,
-  exclude = [],
-}: {
-  label: string;
-  options: string[];
-  value: string[];
-  onChange: (v: string[]) => void;
-  exclude?: string[];
-}) {
-  const pool = options.filter((o) => !exclude.includes(o));
-  const toggle = (o: string) =>
-    onChange(value.includes(o) ? value.filter((x) => x !== o) : [...value, o]);
-  return (
-    <div className="space-y-1">
-      <p className="text-xs font-medium text-foreground">{label}</p>
-      <div className="flex max-h-32 flex-wrap gap-1.5 overflow-auto rounded-md border border-input bg-background p-2">
-        {pool.length === 0 ? (
-          <span className="text-xs text-muted-foreground">No columns available.</span>
-        ) : (
-          pool.map((o) => (
-            <button
-              key={o}
-              type="button"
-              onClick={() => toggle(o)}
-              className={
-                "rounded-full border px-2.5 py-1 text-xs transition-colors " +
-                (value.includes(o)
-                  ? "border-primary bg-primary/15 text-primary"
-                  : "border-border text-muted-foreground hover:bg-secondary/50")
-              }
-            >
-              {o}
-            </button>
-          ))
-        )}
-      </div>
-    </div>
-  );
 }
 
 /**
@@ -259,6 +215,7 @@ function DriversChart({ data }: { data: DriversResult }) {
   const { resolvedMode } = useThemeMode();
   const option = useMemo<EChartsOption>(() => {
     void resolvedMode;
+    const c = chartColors();
     const rows = [...data.ranked].slice(0, 15).reverse(); // total ascending
     return {
       animationDuration: 500,
@@ -272,7 +229,7 @@ function DriversChart({ data }: { data: DriversResult }) {
           barWidth: "60%",
           data: rows.map((r) => ({
             value: r["Impact on demand"],
-            itemStyle: { color: (r["Impact on demand"] ?? 0) >= 0 ? "#16a34a" : "#dc2626" },
+            itemStyle: { color: (r["Impact on demand"] ?? 0) >= 0 ? c.positive : c.negative },
           })),
           label: { show: true, position: "right", formatter: (p) => fmt(p.value as number) },
           itemStyle: { borderRadius: [0, 4, 4, 0] },
@@ -289,6 +246,7 @@ function CausalEffectsChart({ estimates }: { estimates: CausalRunResult["estimat
   const { resolvedMode } = useThemeMode();
   const option = useMemo<EChartsOption>(() => {
     void resolvedMode;
+    const c = chartColors();
     const rows = estimates
       .filter((e) => e["Causal Effect (per +1 unit)"] != null)
       .map((e) => ({ name: e.Treatment, value: e["Causal Effect (per +1 unit)"] as number }))
@@ -307,7 +265,7 @@ function CausalEffectsChart({ estimates }: { estimates: CausalRunResult["estimat
         {
           type: "bar",
           barWidth: "60%",
-          data: rows.map((r) => ({ value: r.value, itemStyle: { color: r.value >= 0 ? "#16a34a" : "#dc2626" } })),
+          data: rows.map((r) => ({ value: r.value, itemStyle: { color: r.value >= 0 ? c.positive : c.negative } })),
           label: { show: true, position: "right", formatter: (p) => fmt(p.value as number, 2) },
           itemStyle: { borderRadius: [0, 4, 4, 0] },
         },
@@ -339,7 +297,7 @@ function primaryContributorLine(estimates: CausalRunResult["estimates"]): string
 export function ScenarioCausalView({ sku }: { sku: string }) {
   const {
     treatments, confounders, instruments, effectModifiers, methods, refuters,
-    computeCi, causalTask, setCausal,
+    computeCi, causalTask, setCausal, setCausalGraph,
   } = useScenarioPlanningStore();
 
   const featuresQuery = useAsync(
@@ -391,7 +349,19 @@ export function ScenarioCausalView({ sku }: { sku: string }) {
         setPhase("error");
         return;
       }
-      setImpact((job.result as CausalRunResult) ?? null);
+      const res = (job.result as CausalRunResult) ?? null;
+      setImpact(res);
+      // TASK 1 — the DoWhy causal graph becomes the graph the What-If Feature
+      // Simulation consumes. Cache it in scenario state, keyed to this SKU, so the
+      // What-If section unlocks and reuses this exact structure (no second graph).
+      if (res && res.dotGraph && res.variables) {
+        setCausalGraph({
+          sku,
+          dotGraph: res.dotGraph,
+          variables: res.variables,
+          generatedAt: res.generatedAt,
+        });
+      }
       setPhase("idle");
     } catch (e) {
       if (!cancelled.current) {
@@ -400,7 +370,7 @@ export function ScenarioCausalView({ sku }: { sku: string }) {
         setPhase("error");
       }
     }
-  }, [sku, treatments, confounders, instruments, effectModifiers, methods, refuters, computeCi, poll]);
+  }, [sku, treatments, confounders, instruments, effectModifiers, methods, refuters, computeCi, poll, setCausalGraph]);
 
   const runDrivers = useCallback(async () => {
     if (!sku) return;
@@ -488,8 +458,12 @@ export function ScenarioCausalView({ sku }: { sku: string }) {
             <Skeleton className="h-24 w-full" />
           ) : causalTask === "impact" ? (
             <div className="space-y-3">
-              <Multi
+              {/* TASK 8 — searchable multi-select (scales to hundreds of columns:
+                  search-as-you-type, scrollable list, keyboard nav). The selection
+                  is the SAME `treatments: string[]` → backend payload unchanged. */}
+              <SearchableMultiSelect
                 label="Lever(s) to test (treatments)"
+                placeholder="Search levers to test…"
                 options={columns}
                 value={treatments}
                 onChange={(v) => setCausal({ treatments: v })}
@@ -626,10 +600,10 @@ export function ScenarioCausalView({ sku }: { sku: string }) {
         />
       ) : null}
 
-      {/* Impact results */}
+      {/* Impact results — "What We Found" (Task 6 sub-nav anchor target). */}
       {causalTask === "impact" && impact ? (
         <>
-          <div className="flex items-center justify-between">
+          <div id="results" className="flex scroll-mt-24 items-center justify-between">
             <h3 className="text-sm font-semibold text-foreground">What we found</h3>
             <Button variant="outline" size="sm" onClick={exportEstimatesCsv}>
               <Download className="size-3.5" /> CSV

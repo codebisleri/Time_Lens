@@ -129,7 +129,6 @@ export const NAV_SECTIONS: NavSection[] = [
           // Phase Y.12 — distinct Global vs Local driver-contribution sections.
           { label: "Global Driver Contributions", anchor: "drivers" },
           { label: "Local Driver Contributions", anchor: "local" },
-          { label: "Model Explanation", anchor: "model" },
           { label: "By Horizon", anchor: "horizon" },
         ],
       },
@@ -144,7 +143,9 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: SlidersHorizontal,
         sections: [
           { label: "Build Scenario", anchor: "build" },
-          { label: "Impact & Results", anchor: "results" },
+          // Task 6 — surface the causal "What We Found" results (DoWhy) in the
+          // sub-nav; the anchor targets the results block in both scenario modes.
+          { label: "What We Found", anchor: "results" },
         ],
       },
       {

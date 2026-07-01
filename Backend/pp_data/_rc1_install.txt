@@ -1,0 +1,11 @@
+﻿START 2026-06-30T14:51:27.3483053+05:30
+installer_exit=0
+install_dir=C:\Users\Tanmaye\AppData\Local\Programs\Time Lens
+backend_exe=True
+web_server=True
+uninstaller=Uninstall Time Lens.exe
+startmenu=C:\Users\Tanmaye\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Time Lens.lnk
+desktop=C:\Users\Tanmaye\Desktop\Time Lens.lnk
+arp_name=Time Lens
+arp_uninstall="C:\Users\Tanmaye\AppData\Local\Programs\Time Lens\Uninstall Time Lens.exe" /currentuser
+DONE 2026-06-30T14:59:11.7192102+05:30

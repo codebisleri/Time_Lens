@@ -17,6 +17,7 @@ import { useAsync } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/lib/utils/format";
 import { ciMethodName, FEATURE_LABELS } from "@/lib/utils/routing-summary";
+import { chartColors } from "@/lib/charts/colors";
 import { forecastService, segmentationService } from "@/lib/api/services";
 import { useForecastStore } from "@/lib/stores/forecast-store";
 import type { ForecastMetricRow } from "@/types/forecast";
@@ -105,6 +106,7 @@ export function ForecastExplainPanel({
 
   // Model-competition WMAPE bar chart (Task 12 / Task 6).
   const competitionOption = useMemo<EChartsOption>(() => {
+    const c = chartColors(); // theme-bound champion/other colours (Issue 4)
     const models = [...(row?.allModels ?? [])]
       .filter((m) => m.testWmape != null)
       .sort((a, b) => (a.testWmape ?? 0) - (b.testWmape ?? 0));
@@ -121,7 +123,7 @@ export function ForecastExplainPanel({
           data: models
             .map((m) => ({
               value: m.testWmape! <= 1 ? m.testWmape! * 100 : m.testWmape!,
-              itemStyle: { color: m.isChampion ? "#16a34a" : "#94a3b8" },
+              itemStyle: { color: m.isChampion ? c.accent : c.neutral },
             }))
             .reverse(),
           label: { show: true, position: "right", formatter: (p) => `${Number(p.value).toFixed(1)}%` },

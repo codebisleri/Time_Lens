@@ -159,6 +159,9 @@ export interface ForecastMetricRow {
   strategyLabel: string;
   brand: string | null;
   segment: string | null;
+  /** Generated Volatility × Contribution routing segment (independent of the
+   *  active display source) — drives the Top-Down recommendation rule. */
+  routingSegment?: string | null;
   trainWmape: number | null;
   testWmape: number | null;
   /** Forecast bias as a percent (signed; +over / −under), null if no backtest. */

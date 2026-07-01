@@ -1,30 +1,23 @@
 import { create } from "zustand";
 import { devtools, persist } from "zustand/middleware";
-import type { ScenarioAdjustment } from "@/types/whatif";
+import type { StoredCausalGraph } from "@/types/whatif";
 
 /**
- * Scenario Planning state (Phase Y.A · Task 6 — state parity with Streamlit's
- * st.session_state). Holds the user's scenario assumptions and parameters for
- * BOTH sub-tools:
- *   • What-If Feature Simulation — sku, horizon, adjustments
+ * Scenario Planning state. Holds the user's selections for both sub-tools:
  *   • Causal Effect Estimation (DoWhy) — treatments, confounders, methods, refuters
+ *   • What-If Feature Simulation — gated on the cached `causalGraph`; the per-month
+ *     grid values are local component state, so only the SKU + the DoWhy graph live
+ *     here.
  *
- * Persisted to localStorage so assumptions/parameters/selections survive refresh,
- * browser restart, and Electron restart. Transient results (forecast series,
- * causal estimates) are NOT persisted — they are recomputed on demand.
+ * Persisted to localStorage so selections survive refresh, browser restart, and
+ * Electron restart. Transient results (forecast series, causal estimates) are NOT
+ * persisted — they are recomputed on demand.
  */
 export type ScenarioMode = "whatif" | "causal";
 
 interface ScenarioPlanningState {
   mode: ScenarioMode;
   sku: string;
-  periods: number;
-  /** What-If lever adjustments. */
-  adjustments: ScenarioAdjustment[];
-  applyCausal: boolean;
-  /** What-If date window (start/end) for the exog adjustments (Streamlit parity). */
-  start: string;
-  end: string;
   // Causal Effect Estimation selections.
   treatments: string[];
   confounders: string[];
@@ -34,26 +27,28 @@ interface ScenarioPlanningState {
   refuters: string[];
   computeCi: boolean;
   causalTask: "impact" | "drivers";
+  /**
+   * DoWhy output graph, cached so the What-If Feature Simulation can CONSUME it.
+   * What-If stays locked until a graph exists for the active SKU
+   * (`causalGraph.sku === activeSku`). Persisted → the gate + graph survive
+   * refresh / restart. Cleared on reset.
+   */
+  causalGraph: StoredCausalGraph | null;
 
   setMode: (mode: ScenarioMode) => void;
   setSku: (sku: string) => void;
-  setPeriods: (periods: number) => void;
-  setAdjustments: (a: ScenarioAdjustment[]) => void;
-  setApplyCausal: (v: boolean) => void;
-  setWindow: (patch: Partial<Pick<ScenarioPlanningState, "start" | "end">>) => void;
   setCausal: (patch: Partial<Pick<ScenarioPlanningState,
     "treatments" | "confounders" | "instruments" | "effectModifiers" | "methods" | "refuters" | "computeCi" | "causalTask">>) => void;
+  setCausalGraph: (graph: StoredCausalGraph | null) => void;
   reset: () => void;
 }
 
 const DEFAULTS = {
-  mode: "whatif" as ScenarioMode,
+  // TASK 5 — the Scenario workflow is strictly DoWhy → graph → What-If, so the
+  // page must ALWAYS open on the Causal Effect Estimation (DoWhy) tab. `mode` is
+  // intentionally NOT persisted (see partialize) so every entry resets to causal.
+  mode: "causal" as ScenarioMode,
   sku: "",
-  periods: 12,
-  adjustments: [] as ScenarioAdjustment[],
-  applyCausal: false,
-  start: "",
-  end: "",
   treatments: [] as string[],
   confounders: [] as string[],
   instruments: [] as string[],
@@ -67,6 +62,7 @@ const DEFAULTS = {
   ],
   computeCi: true,
   causalTask: "impact" as const,
+  causalGraph: null as StoredCausalGraph | null,
 };
 
 export const useScenarioPlanningStore = create<ScenarioPlanningState>()(
@@ -76,24 +72,16 @@ export const useScenarioPlanningStore = create<ScenarioPlanningState>()(
         ...DEFAULTS,
         setMode: (mode) => set({ mode }),
         setSku: (sku) => set({ sku }),
-        setPeriods: (periods) => set({ periods }),
-        setAdjustments: (adjustments) => set({ adjustments }),
-        setApplyCausal: (applyCausal) => set({ applyCausal }),
-        setWindow: (patch) => set(patch),
         setCausal: (patch) => set(patch),
+        setCausalGraph: (causalGraph) => set({ causalGraph }),
         reset: () => set({ ...DEFAULTS }),
       }),
       {
         name: "scenario-planning",
-        // Persist assumptions + parameters + selections (Task 6). No results.
+        // Persist selections (no transient results).
         partialize: (s) => ({
           mode: s.mode,
           sku: s.sku,
-          periods: s.periods,
-          adjustments: s.adjustments,
-          applyCausal: s.applyCausal,
-          start: s.start,
-          end: s.end,
           treatments: s.treatments,
           confounders: s.confounders,
           instruments: s.instruments,
@@ -102,6 +90,7 @@ export const useScenarioPlanningStore = create<ScenarioPlanningState>()(
           refuters: s.refuters,
           computeCi: s.computeCi,
           causalTask: s.causalTask,
+          causalGraph: s.causalGraph,
         }),
       },
     ),

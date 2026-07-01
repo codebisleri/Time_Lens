@@ -4,32 +4,12 @@ import { devtools, persist } from "zustand/middleware";
 /**
  * Forecast-run session preferences (Phase Y.1 / Y.3).
  *
- * `topDownEnabled` records the planner's choice from the Top-Down Forecasting
- * dialog shown when "Run forecasts" is clicked: forecast a stable aggregate and
- * distribute it back to new/sparse/noisy SKUs by contribution. `topDownOptions`
- * holds the advanced settings (moved out of the Configuration page into the
- * dialog in Y.3). Stored here — not in component state — so the selection
- * survives re-renders and can be read by any forecast surface. It does NOT alter
- * the run payload/API; it is a session-level preference the UI owns.
+ * `topDownEnabled` records the planner's choice from the Top-Down Forecast
+ * Recommendation dialog shown when "Run forecasts" is clicked (Task 19): the
+ * eligible SKUs (Volatile segment + WMAPE>20%) are forecast top-down from their
+ * aggregate. It is a session-level UI badge; the run itself persists the choice
+ * to the dataset config so the backend applies it.
  */
-export interface TopDownOptions {
-  aggregationLevel: string;
-  weighting: string;
-  applyTo: { cold: boolean; short: boolean; lumpy: boolean; noisy: boolean };
-}
-
-export const TOP_DOWN_AGGREGATION_LEVELS = ["Brand", "Category", "Enterprise"] as const;
-export const TOP_DOWN_WEIGHTING = [
-  "Historical average share",
-  "Recent 3-month share",
-  "Equal split",
-] as const;
-
-const DEFAULT_OPTIONS: TopDownOptions = {
-  aggregationLevel: "Brand",
-  weighting: "Historical average share",
-  applyTo: { cold: true, short: false, lumpy: true, noisy: false },
-};
 
 /**
  * Per-segment model override (Phase X.L · Tasks 5–6). Mirrors the Streamlit
@@ -48,9 +28,7 @@ export interface SegmentOverride {
 
 interface ForecastPrefsState {
   topDownEnabled: boolean;
-  topDownOptions: TopDownOptions;
   setTopDownEnabled: (enabled: boolean) => void;
-  setTopDownOptions: (patch: Partial<TopDownOptions>) => void;
 
   /** Keyed by segment name. Empty/absent ⇒ that segment uses its auto-routed model. */
   segmentOverrides: Record<string, SegmentOverride>;
@@ -77,10 +55,7 @@ export const useForecastStore = create<ForecastPrefsState>()(
     persist(
       (set) => ({
         topDownEnabled: false,
-        topDownOptions: DEFAULT_OPTIONS,
         setTopDownEnabled: (enabled) => set({ topDownEnabled: enabled }),
-        setTopDownOptions: (patch) =>
-          set((s) => ({ topDownOptions: { ...s.topDownOptions, ...patch } })),
 
         segmentOverrides: {},
         setSegmentPrimary: (segment, primary) =>

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
-import { Loader2, Play, Sparkles, Target, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowDownUp, Loader2, Play, Sparkles, Target, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -72,6 +72,54 @@ function toggle(list: string[], v: string): string[] {
   return list.includes(v) ? list.filter((x) => x !== v) : [...list, v];
 }
 
+// Task 12 — SKU-list sort options. Volume = mean demand per period; Revenue =
+// total revenue (both already in the segmentation profile). Sorting only changes
+// the DISPLAY order — selections, filters and search are untouched.
+type SortKey =
+  | "name_asc" | "name_desc"
+  | "segment_asc" | "segment_desc"
+  | "volume_desc" | "volume_asc"
+  | "revenue_desc" | "revenue_asc";
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: "name_asc", label: "Name (A → Z)" },
+  { value: "name_desc", label: "Name (Z → A)" },
+  { value: "segment_asc", label: "Segment (A → Z)" },
+  { value: "segment_desc", label: "Segment (Z → A)" },
+  { value: "volume_desc", label: "Volume (High → Low)" },
+  { value: "volume_asc", label: "Volume (Low → High)" },
+  { value: "revenue_desc", label: "Revenue (High → Low)" },
+  { value: "revenue_asc", label: "Revenue (Low → High)" },
+];
+
+type SkuOption = {
+  sku: string;
+  brand: string | null;
+  segment: string;
+  meanSales: number | null;
+  totalRevenue: number | null;
+  attrs: Record<string, string>;
+};
+
+function sortSkus(list: SkuOption[], sortBy: SortKey): SkuOption[] {
+  const arr = [...list];
+  const num = (v: number | null | undefined) =>
+    v == null || !Number.isFinite(v) ? -Infinity : v;
+  const byStr = (a: string, b: string) =>
+    a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
+  switch (sortBy) {
+    case "name_asc": arr.sort((a, b) => byStr(a.sku, b.sku)); break;
+    case "name_desc": arr.sort((a, b) => byStr(b.sku, a.sku)); break;
+    case "segment_asc": arr.sort((a, b) => byStr(a.segment, b.segment) || byStr(a.sku, b.sku)); break;
+    case "segment_desc": arr.sort((a, b) => byStr(b.segment, a.segment) || byStr(a.sku, b.sku)); break;
+    case "volume_desc": arr.sort((a, b) => num(b.meanSales) - num(a.meanSales)); break;
+    case "volume_asc": arr.sort((a, b) => num(a.meanSales) - num(b.meanSales)); break;
+    case "revenue_desc": arr.sort((a, b) => num(b.totalRevenue) - num(a.totalRevenue)); break;
+    case "revenue_asc": arr.sort((a, b) => num(a.totalRevenue) - num(b.totalRevenue)); break;
+  }
+  return arr;
+}
+
 /**
  * Forecast configuration — replicates the Streamlit Forecast-tab setup: what to
  * forecast (pick / sample-N / all + brand & segment filters), training options
@@ -100,7 +148,7 @@ export function ForecastRunConfig({
   algorithms: ForecastAlgorithms | null;
   brandOptions: string[];
   segmentOptions: string[];
-  skuOptions: { sku: string; brand: string | null; segment: string; attrs: Record<string, string> }[];
+  skuOptions: SkuOption[];
   /** Dynamic, dataset-derived filter columns (Phase X.Q · Task 2). */
   attrColumns?: { key: string; label: string }[];
   onRun: () => void;
@@ -188,6 +236,10 @@ export function ForecastRunConfig({
     () => skuOptions.filter(matchesDynamic),
     [skuOptions, matchesDynamic],
   );
+
+  // Task 12 — display order only; never mutates the filtered set or the selection.
+  const [sortBy, setSortBy] = useState<SortKey>("name_asc");
+  const sortedSkus = useMemo(() => sortSkus(pickFilteredSkus, sortBy), [pickFilteredSkus, sortBy]);
 
   // Keep the explicit selection ⊆ the dynamic filter (Streamlit parity). Pruning
   // only runs when filters change; config.skuIds is read via closure (not a dep)
@@ -306,7 +358,7 @@ export function ForecastRunConfig({
                 totalCount={skuOptions.length}
               />
               <Field label={`${levelPlural} (${config.skuIds.length} selected · ${pickFilteredSkus.length} match the filter)`}>
-                <div className="mb-1.5 flex items-center gap-2">
+                <div className="mb-1.5 flex flex-wrap items-center gap-2">
                   <Button type="button" variant="ghost" size="sm"
                     onClick={() => onChange({ skuIds: pickFilteredSkus.map((s) => s.sku) })}>
                     Select all
@@ -315,13 +367,25 @@ export function ForecastRunConfig({
                     onClick={() => onChange({ skuIds: [] })}>
                     Deselect all
                   </Button>
+                  {/* Task 12 — compact sort control (display order only). */}
+                  <div className="ml-auto flex items-center gap-1.5">
+                    <ArrowDownUp className="size-3.5 text-muted-foreground" aria-hidden />
+                    <div className="w-44">
+                      <Select
+                        ariaLabel={`Sort ${levelPlural}`}
+                        value={sortBy}
+                        onChange={(v) => setSortBy(v as SortKey)}
+                        options={SORT_OPTIONS}
+                      />
+                    </div>
+                  </div>
                 </div>
                 <div className="max-h-40 space-y-1.5 overflow-auto rounded-md border border-border p-2">
-                  {pickFilteredSkus.slice(0, 300).map((s) => (
+                  {sortedSkus.slice(0, 300).map((s) => (
                     <Check key={s.sku} label={s.sku} checked={config.skuIds.includes(s.sku)} onChange={() => onChange({ skuIds: toggle(config.skuIds, s.sku) })} />
                   ))}
-                  {pickFilteredSkus.length > 300 ? (
-                    <p className="text-[0.7rem] text-muted-foreground">+{pickFilteredSkus.length - 300} more — refine the filter to see them.</p>
+                  {sortedSkus.length > 300 ? (
+                    <p className="text-[0.7rem] text-muted-foreground">+{sortedSkus.length - 300} more — refine the filter to see them.</p>
                   ) : null}
                 </div>
               </Field>

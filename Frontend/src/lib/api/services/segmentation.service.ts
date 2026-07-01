@@ -4,6 +4,7 @@ import type {
   SegmentationResult,
   SegmentationRun,
   SegmentationRunPayload,
+  SegmentationSource,
   SegmentationThresholds,
   SegmentTrace,
 } from "@/types/segmentation";
@@ -18,8 +19,11 @@ function compact(obj?: object): Record<string, unknown> {
 
 /** Profile & Route — retail segmentation (volatility × contribution). */
 export const segmentationService = {
-  /** Current/preview segmentation; optional threshold knobs recompute the matrix. */
-  get(params?: { datasetId?: string } & SegmentationThresholds): Promise<SegmentationResult> {
+  /** Current/preview segmentation; optional threshold knobs recompute the matrix.
+   *  `source` selects uploaded vs generated (omit ⇒ the ACTIVE source). */
+  get(
+    params?: { datasetId?: string; source?: SegmentationSource | "active" } & SegmentationThresholds,
+  ): Promise<SegmentationResult> {
     return http.get<SegmentationResult>(endpoints.segmentation.get(), compact(params));
   },
 

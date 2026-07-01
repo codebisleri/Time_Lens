@@ -11,11 +11,12 @@ import {
   Layers,
   BarChart3,
   Boxes,
-  Cpu,
   Table2,
   Download,
   FileImage,
+  ArrowRight,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { PageShell } from "@/components/layout/page-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +28,8 @@ import { useAsync } from "@/lib/hooks";
 import { explainabilityService, forecastService } from "@/lib/api/services";
 import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import { useExplainabilityFilterStore } from "@/lib/stores/explainability-filter-store";
+import { useScenarioPlanningStore } from "@/lib/stores/scenario-planning-store";
+import { routes } from "@/lib/constants/routes";
 import { useThemeMode } from "@/lib/theme/use-theme-mode";
 import { formatNumber } from "@/lib/utils/format";
 import { downloadDataUrl, downloadFile } from "@/lib/utils/download";
@@ -35,13 +38,11 @@ import {
   driverTableRows,
   driversToCsv,
   horizonToCsv,
-  modelFamily,
   monthlyWaterfall,
   seasonalityStrengthLabel,
   trendDirectionLabel,
   waterfallToCsv,
   type DriverTableRow,
-  type ModelFamily,
 } from "./explainability-helpers";
 import type { DriverContributions, HorizonPeriod } from "@/types/explainability";
 import type { ForecastMetricRow, ForecastRunMetrics } from "@/types/forecast";
@@ -168,7 +169,12 @@ function DriverTable({ rows }: { rows: DriverTableRow[] }) {
                       style={{
                         width: `${Math.max(2, Math.min(100, (r.pct / maxPct) * 100))}%`,
                         background:
-                          r.direction === "down" ? "#dc2626" : r.direction === "up" ? "#16a34a" : "#64748b",
+                          // Theme-bound (Issue 4): up = orange, down = navy, flat = grey.
+                          r.direction === "down"
+                            ? "hsl(var(--chart-1))"
+                            : r.direction === "up"
+                              ? "hsl(var(--chart-2))"
+                              : "hsl(var(--muted-foreground))",
                       }}
                     />
                   </div>
@@ -253,68 +259,6 @@ function SummaryCard({
   );
 }
 
-const FAMILY_TITLE: Record<ModelFamily, string> = {
-  prophet: "Prophet decomposition",
-  lightgbm: "LightGBM feature contribution",
-  catboost: "CatBoost feature contribution",
-  sarimax: "SARIMAX drivers",
-  chronos: "Chronos decomposition",
-  moe: "Mixture-of-Experts contribution",
-  tsb: "TSB intermittency contribution",
-  croston: "Croston intermittency contribution",
-  ensemble: "Ensemble weighted contribution",
-  statistical: "Statistical model drivers",
-  universal: "Estimated driver contribution",
-};
-
-// Per-family intro line + which drivers to surface. Phase X.X — EVERY family
-// produces an explanation; there is no "unavailable" branch.
-const FAMILY_INTRO: Record<ModelFamily, string> = {
-  prophet: "Prophet models demand as additive components. Estimated share of each:",
-  lightgbm: "Relative feature contribution, derived from each driver's contribution to demand:",
-  catboost: "Relative feature contribution, derived from each driver's contribution to demand:",
-  sarimax: "SARIMAX explains demand through autoregressive trend, seasonality and exogenous regressors:",
-  chronos: "Chronos is a pretrained forecaster; its behaviour is interpreted via trend, seasonality and residual:",
-  moe: "Mixture-of-Experts blends specialists — weighted contribution of each driver:",
-  tsb: "TSB targets intermittent demand. Estimated drivers of demand size and frequency:",
-  croston: "Croston targets intermittent demand. Estimated drivers of demand size and frequency:",
-  ensemble: "Weighted contribution of each driver across the blended members:",
-  statistical: "This statistical model explains demand through trend and seasonal structure:",
-  universal: "Estimated forecast drivers based on historical decomposition:",
-};
-
-/** Model-specific explanation panel (Tasks 3 & 8). Derives its content from the
- *  already-computed driver contributions — never reruns/retrains the model.
- *  Universal fallback: every model yields an explanation (Tasks 2 & 4). */
-function ModelPanel({
-  family,
-  contributions,
-}: {
-  family: ModelFamily;
-  contributions: DriverContributions | null;
-}) {
-  // Even with no decomposable contributions we never say "unavailable" — show
-  // the historical-decomposition framing so every level has an explanation.
-  if (!contributions) {
-    return (
-      <EmptyState
-        icon={Cpu}
-        title="Estimated forecast drivers based on historical decomposition"
-        description="Not enough history yet to decompose this forecast level into individual drivers."
-      />
-    );
-  }
-
-  // Task 5 — the per-driver contribution table that used to live here duplicated
-  // the Driver Importance table AND the Forecast Bridge waterfall. Keep ONLY the
-  // model-family narrative; the contribution numbers live in the bridge + table.
-  return (
-    <div className="space-y-3">
-      <p className="text-sm text-muted-foreground">{FAMILY_INTRO[family]}</p>
-    </div>
-  );
-}
-
 /**
  * Forecast Explainability (Phase X.U → forecast-level only in X.W) — a READ-ONLY
  * interpretation layer between Forecast and Scenario. Everything is scoped to a
@@ -323,6 +267,8 @@ function ModelPanel({
  * no forecast is rerun or changed. Portfolio / global / segment views removed.
  */
 export function ExplainabilityView() {
+  const router = useRouter();
+  const setScenarioSku = useScenarioPlanningStore((s) => s.setSku);
   const { label: levelLabel, plural: levelPlural } = useForecastLevel();
   const metrics = useAsync<ForecastRunMetrics>(() => forecastService.metrics(), []);
 
@@ -374,10 +320,6 @@ export function ExplainabilityView() {
   );
 
   const localContrib = local.data?.contributions ?? null;
-  const family = useMemo(
-    () => modelFamily(local.data?.model || championRow?.strategyLabel),
-    [local.data?.model, championRow?.strategyLabel],
-  );
   const driverRows = useMemo(
     () => (localContrib ? driverTableRows(localContrib) : []),
     [localContrib],
@@ -582,24 +524,6 @@ export function ExplainabilityView() {
         </Card>
       </section>
 
-      {/* ── Model-specific explanation. Phase Y.1 · Task 2 — every supported model
-          family (incl. Mixture-of-Experts) renders its explanation. Moved below
-          the Local Driver Contributions group in Phase Y.4. ───────────────────── */}
-      <section id="model" className="scroll-mt-24 space-y-3">
-        <SectionHeading icon={Cpu}>{activeEntity ? FAMILY_TITLE[family] : "Model Explanation"}</SectionHeading>
-        <Card>
-          <CardContent className="pt-6">
-            {local.isLoading ? (
-              <Skeleton className="h-48 w-full" />
-            ) : activeEntity ? (
-              <ModelPanel family={family} contributions={localContrib} />
-            ) : (
-              <EmptyState title="No explainability information available" description="Select a forecast level to explain." />
-            )}
-          </CardContent>
-        </Card>
-      </section>
-
       {/* ── Horizon (Task 10) ──────────────────────────────────────────────── */}
       <section id="horizon" className="scroll-mt-24 space-y-3">
         <div className="flex items-center justify-between gap-3">
@@ -652,6 +576,33 @@ export function ExplainabilityView() {
             )}
           </CardContent>
         </Card>
+      </section>
+
+      {/* Continue to Scenario — carries the selected forecast level into Scenario
+          Planning so the planner doesn't lose context. The selected SKU is saved
+          to the scenario store; the forecast/champion model + forecast data are
+          re-resolved on the Scenario page for that same SKU. */}
+      <section className="flex flex-col items-stretch gap-3 border-t border-border/60 pt-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-sm text-muted-foreground">
+          {activeEntity ? (
+            <>
+              Next: estimate causal effects and run What-If simulations for{" "}
+              <span className="font-medium text-foreground">{activeEntity}</span>.
+            </>
+          ) : (
+            <>Select a {levelLabel.toLowerCase()} to continue to Scenario Planning.</>
+          )}
+        </div>
+        <Button
+          onClick={() => {
+            if (activeEntity) setScenarioSku(activeEntity);
+            router.push(routes.scenarios);
+          }}
+          disabled={!activeEntity}
+          className="sm:w-60"
+        >
+          Continue to Scenario <ArrowRight className="size-4" />
+        </Button>
       </section>
     </PageShell>
   );

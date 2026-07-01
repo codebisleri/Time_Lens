@@ -5,6 +5,7 @@ import * as echarts from "echarts";
 import type { EChartsOption } from "echarts";
 import { cn } from "@/lib/utils";
 import { useThemeMode } from "@/lib/theme/use-theme-mode";
+import { readCssVar } from "@/lib/theme/theme-config";
 import { sanitizeEChartsOption } from "@/lib/charts/sanitize";
 import { buildEchartsTheme, ECHARTS_THEME_NAME } from "@/styles/echarts-theme";
 
@@ -33,6 +34,23 @@ interface EChartBaseProps {
 // Expand-arrows icon for the custom fullscreen toolbox button.
 const FULLSCREEN_ICON =
   "path://M160 96H32V224h64V160h64V96zM480 96H352v64h64v64h64V96zM96 352H32v128h128v-64H96V352zM416 416H352v64h128V352h-64v64z";
+
+/**
+ * Task 16 — the OPAQUE surface colour to bake into chart image exports so a
+ * downloaded chart matches the active Light/Dark theme exactly (the on-screen
+ * chart background is "transparent" — exporting that produces a theme-mismatched
+ * image). Reads the live `--card` (the chart's surface) and falls back to
+ * `--background`, then white. Recomputed per export-config build, so it tracks
+ * theme switches (the chart re-inits on mode change).
+ */
+function currentExportBackground(): string {
+  if (typeof document === "undefined") return "#ffffff";
+  const root = getComputedStyle(document.documentElement);
+  const card = root.getPropertyValue("--card").trim();
+  const bg = root.getPropertyValue("--background").trim();
+  const token = card || bg;
+  return token ? `hsl(${token})` : "#ffffff";
+}
 
 /**
  * Shared enterprise chart controls (Issue 4 — parity with Streamlit/Plotly chart
@@ -78,8 +96,12 @@ function withChartControls(
       top: 4,
       itemSize: 13,
       itemGap: 8,
-      iconStyle: { borderColor: "#94a3b8" },
-      emphasis: { iconStyle: { borderColor: "hsl(var(--brand-accent))" } },
+      // Theme-bound icon stroke (muted foreground) so the toolbar reads in both modes.
+      // Toolbox icons are drawn on the zrender CANVAS, which cannot resolve CSS
+      // var() — pass a concrete, already-resolved colour (readCssVar emits the
+      // comma-syntax hsl zrender parses) so the icons aren't rendered black.
+      iconStyle: { borderColor: readCssVar("--muted-foreground") || "#8d99a6" },
+      emphasis: { iconStyle: { borderColor: readCssVar("--brand-accent") || "#ef7602" } },
       feature: {
         dataZoom: {
           yAxisIndex: "none",
@@ -94,7 +116,14 @@ function withChartControls(
           buttonColor: "hsl(var(--brand-accent))",
         },
         restore: { title: "Reset" },
-        saveAsImage: { title: "Download", name: "time-lens-chart", pixelRatio: 2 },
+        // Task 16 — bake the active theme's surface into the export so the
+        // downloaded PNG matches what's on screen (light stays light).
+        saveAsImage: {
+          title: "Download",
+          name: "time-lens-chart",
+          pixelRatio: 2,
+          backgroundColor: currentExportBackground(),
+        },
         myFullscreen: {
           show: true,
           title: "Fit to Screen",

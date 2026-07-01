@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   ChevronDown,
   Download,
   Layers,
   PackageSearch,
-  RefreshCw,
   Search,
   Tags,
   Clock,
@@ -41,8 +40,10 @@ import { routes } from "@/lib/constants/routes";
 import { dataService, forecastService, segmentationService, workflowService } from "@/lib/api/services";
 import { Select } from "@/features/data/controls";
 import { useForecastLevelStore } from "@/lib/stores/forecast-level-store";
+import { useSegmentationSourceStore } from "@/lib/stores/segmentation-source-store";
 import type {
   SegmentationResult,
+  SegmentationSource,
   SegmentationThresholds,
   SegmentedSku,
 } from "@/types/segmentation";
@@ -60,6 +61,7 @@ import { TraceSteps } from "./trace-steps";
 import { SegmentThresholds } from "./segment-thresholds";
 import { SegmentOverrides } from "./segment-overrides";
 import { BrandSegmentMatrixTable } from "./brand-segment-matrix";
+import { GeneratedSegmentationDialog } from "./generated-segmentation-dialog";
 import { visibleSegments } from "@/lib/utils/routing-summary";
 import { SegmentDistributionChart } from "./routing-distributions";
 
@@ -84,29 +86,55 @@ function downloadCsv(skus: SegmentedSku[]) {
 }
 
 /**
- * Profile & Route — replicates the Streamlit "Step 3 · Profile & Route" screen:
- * hero, the Volatility × Contribution routing matrix (all segments shown),
- * methodology + trace + brand + audit accordions, re-segmentation + download,
- * and the Demand Pattern → Model Routing summary. Gated on EDA completion.
+ * Profile & Route — TWO independent segmentation sources:
+ *
+ *   • uploadedSegmentation  — the uploaded segment column (immutable).
+ *   • generatedSegmentation — computed by "Run Segmentation".
+ *   • activeSegmentation    — whichever is selected; the ONLY source consumed
+ *     downstream (forecast, explainability, scenario, reports, top-down, …).
+ *
+ * Flow: the page stays CLEAN (thresholds + actions only) until the planner runs
+ * segmentation. When an uploaded column exists they then pick the active source
+ * (popup → Proceed); otherwise the generated source auto-activates. Only after
+ * that do the routing cards / tables / audit render — entirely from the active
+ * source, switchable in place with no re-run or refresh.
  */
 export function ProfileRouteView() {
   const workflow = useWorkflowStatus();
   const [thresholds, setThresholds] = useState<SegmentationThresholds | undefined>(undefined);
-  const seg = useSegmentation(thresholds);
+
+  // ── Three-state segmentation source ──────────────────────────────────────
+  const {
+    datasetId: srcDatasetId,
+    proceeded,
+    activeSource,
+    init: initSource,
+    setActiveSource,
+    markRan,
+    proceed,
+  } = useSegmentationSourceStore();
+
+  // Before the planner Proceeds we always work against the GENERATED segmentation
+  // (the threshold/preview target); afterwards we render the ACTIVE source.
+  const displaySource: SegmentationSource = proceeded ? activeSource : "generated";
+  const seg = useSegmentation(thresholds, displaySource);
   const runs = useSegmentationRuns();
 
   const [segmentFilter, setSegmentFilter] = useState<string>(ALL);
   const [search, setSearch] = useState("");
   const [active, setActive] = useState<SegmentedSku | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [resegmenting, setResegmenting] = useState(false);
+  const [popupOpen, setPopupOpen] = useState(false);
+  const [running, setRunning] = useState(false);
+  // The freshly generated segmentation (Run Segmentation result) — drives the
+  // summary popup. Independent of `uploadedSegmentation`, which is never touched.
+  const [generatedResult, setGeneratedResult] = useState<SegmentationResult | null>(null);
 
   const data = seg.data;
   const skus = useMemo(() => data?.skus ?? [], [data]);
-
-  // Task 3 — Performance Metric: numeric columns drive contribution. Fetch the
-  // dataset schema and offer ONLY numeric columns (never SKU/Category/Brand/Date).
   const datasetId = data?.datasetId;
+
+  // Performance metric — numeric columns drive contribution.
   const schemaPreview = useAsync(
     () => (datasetId ? dataService.preview(datasetId) : Promise.resolve(null)),
     [datasetId],
@@ -117,15 +145,14 @@ export function ProfileRouteView() {
       .filter((s) => /int|float|double|decimal|numeric|number|real|long/i.test(s.dtype))
       .map((s) => s.column);
   }, [schemaPreview.data]);
-  // Phase X.K · Task 6 — dynamic forecast-level term ("Items", "Item Nos",
-  // "Product IDs"…) derived from the saved dataset config; labels segment-card
-  // counts instead of a hardcoded "SKUs".
+
   const datasetMeta = useAsync(
     () => (datasetId ? dataService.getDataset(datasetId) : Promise.resolve(null)),
     [datasetId],
   );
-  // Phase X.O · Tasks 5–6 — singular + plural Forecast-Level labels, and publish
-  // them to the global store so the whole app speaks the user's vocabulary.
+  const config = datasetMeta.data?.config;
+  const hasSegmentColumn = !!config?.segmentCol;
+
   const levelLabel = useMemo(() => {
     const cfg = datasetMeta.data?.config;
     if (!cfg) return "Item";
@@ -140,36 +167,22 @@ export function ProfileRouteView() {
     if (datasetMeta.data?.config) setForecastLevelLabel(levelLabel);
   }, [levelLabel, datasetMeta.data, setForecastLevelLabel]);
 
-  // Tasks 3-4 — "Use newly generated segmentation for forecasts" toggle. Shown
-  // ONLY when an uploaded segment column exists; otherwise the generated
-  // segmentation is mandatory and no checkbox appears. Persists
-  // config.useGeneratedSegmentation so the forecast worker resolves the source.
-  // No forecasting logic changes — segmentation calculations are untouched.
-  const config = datasetMeta.data?.config;
-  const hasSegmentColumn = !!config?.segmentCol;
-  const [useGenerated, setUseGenerated] = useState(false);
+  // Initialise/repair the source store for this dataset (resets the run/proceed
+  // gate when the dataset changes; seeds the active source from config).
   useEffect(() => {
-    setUseGenerated(!!config?.useGeneratedSegmentation);
-  }, [config?.useGeneratedSegmentation]);
-  const toggleUseGenerated = useCallback(
-    async (checked: boolean) => {
-      setUseGenerated(checked); // optimistic
-      if (!datasetId) return;
-      try {
-        await dataService.updateConfig(datasetId, { useGeneratedSegmentation: checked });
-        await datasetMeta.refetch().catch(() => {});
-      } catch {
-        setUseGenerated(!checked);
-        toast.error("Couldn't update the forecast segmentation source");
-      }
-    },
-    [datasetId, datasetMeta],
-  );
+    if (datasetId && config) {
+      initSource({
+        datasetId,
+        hasUploaded: !!config.segmentCol,
+        useGenerated: !!config.useGeneratedSegmentation,
+      });
+    }
+  }, [datasetId, config, initSource]);
+  // True once the store has synced to THIS dataset (avoids a stale-flag flash when
+  // navigating between datasets).
+  const sourceSynced = !!datasetId && srcDatasetId === datasetId;
 
   const [metric, setMetric] = useState<string>("");
-  // Default once the numeric columns load — prefer the backend's contribution
-  // Phase X.Q · Task 7 — intelligent default in strict priority order:
-  // Revenue → Sales → Amount → Units → Quantity, then the first numeric column.
   useEffect(() => {
     if (!metric && numericCols.length) {
       const PRIORITY = [/revenue/i, /sales/i, /amount/i, /units?/i, /quantity|qty/i];
@@ -196,20 +209,91 @@ export function ProfileRouteView() {
     setDrawerOpen(true);
   }, []);
 
-  // Preview = recompute the matrix with the supplied thresholds (no persist).
+  // Preview = recompute with the supplied thresholds (no persist).
   const preview = useCallback((t: SegmentationThresholds) => {
     setThresholds(t);
   }, []);
 
-  // Validate & Save = recompute + persist an audit run (validator + notes).
+  // Persist the active source to the dataset config so the backend forecast
+  // worker resolves the SAME source as the UI (single source of truth).
+  const persistSource = useCallback(
+    async (source: SegmentationSource) => {
+      if (!datasetId) return;
+      try {
+        await dataService.updateConfig(datasetId, {
+          useGeneratedSegmentation: source === "generated",
+        });
+        await datasetMeta.refetch().catch(() => {});
+      } catch {
+        /* best-effort — the run still proceeds with the prior config */
+      }
+    },
+    [datasetId, datasetMeta],
+  );
+
+  // Run Segmentation — generate the GENERATED segmentation with the tuned
+  // thresholds (the uploaded Segments column is NEVER touched), then:
+  //   • uploaded Segments exist  → show the summary popup (Workflow B/C).
+  //   • no uploaded Segments      → auto-activate generated + proceed (Workflow D).
+  const runSegmentation = useCallback(
+    async (t: SegmentationThresholds) => {
+      setThresholds(t);
+      setRunning(true);
+      try {
+        const result = await segmentationService.run({ ...t, metricColumn: metric });
+        setGeneratedResult(result); // independent copy for the summary popup
+        markRan();
+        await workflowService.complete("profile").catch(() => {});
+        await Promise.all([
+          runs.refetch().catch(() => {}),
+          workflow.refetch().catch(() => {}),
+        ]);
+        if (hasSegmentColumn) {
+          setPopupOpen(true); // Workflow B/C — show summary + choose
+        } else {
+          // Workflow D — generated is the only (and active) source. No popup.
+          setActiveSource("generated");
+          await persistSource("generated");
+          proceed();
+        }
+      } catch {
+        toast.error("Run Segmentation failed");
+      } finally {
+        setRunning(false);
+      }
+    },
+    [metric, hasSegmentColumn, markRan, runs, workflow, setActiveSource, persistSource, proceed],
+  );
+
+  // Popup Proceed — the checkbox decides the active source. Unticked ⇒ keep the
+  // uploaded segmentation (Workflow B); ticked ⇒ use the newly generated one
+  // (Workflow C). Either way the rest of the page renders from the active source.
+  const onProceed = useCallback(
+    async (useGenerated: boolean) => {
+      const source: SegmentationSource = useGenerated ? "generated" : "uploaded";
+      setActiveSource(source);
+      await persistSource(source);
+      proceed();
+      setPopupOpen(false);
+    },
+    [setActiveSource, persistSource, proceed],
+  );
+
+  // Use Existing Segments — adopt the uploaded segmentation directly (Workflow A):
+  // no algorithm run, no popup, render immediately from the uploaded column.
+  const useExisting = useCallback(async () => {
+    setActiveSource("uploaded");
+    await persistSource("uploaded");
+    proceed();
+  }, [setActiveSource, persistSource, proceed]);
+
+  // Validate & Save = generate + persist a validated audit run (validator + notes).
   const validate = useCallback(
     async (t: SegmentationThresholds, validatedBy: string, notes: string) => {
       setThresholds(t);
-      setResegmenting(true);
+      setRunning(true);
       try {
-        await segmentationService.run({ ...t, validatedBy, notes });
-        // Mark the Profile & Route stage complete (mirrors EDA's complete("eda"))
-        // and refresh workflow state so the next step unlocks immediately.
+        await segmentationService.run({ ...t, validatedBy, notes, metricColumn: metric });
         await workflowService.complete("profile").catch(() => {});
         await Promise.all([
           seg.refetch().catch(() => {}),
@@ -220,59 +304,16 @@ export function ProfileRouteView() {
       } catch {
         toast.error("Validate & Save failed");
       } finally {
-        setResegmenting(false);
+        setRunning(false);
       }
     },
-    [seg, runs, workflow],
+    [seg, runs, workflow, metric],
   );
 
-  const resegment = useCallback(async () => {
-    setResegmenting(true);
-    try {
-      // Task 3 — forward the chosen performance metric so the backend can drive
-      // contribution off it. (Existing endpoint ignores unknown keys today; this
-      // is forward-compatible without an API change.)
-      await segmentationService.run({ ...thresholds, metricColumn: metric });
-      // Mark the Profile & Route stage complete and refresh workflow state so the
-      // "Continue to Forecast Configuration" button appears without a reload.
-      await workflowService.complete("profile").catch(() => {});
-      await Promise.all([
-        seg.refetch().catch(() => {}),
-        runs.refetch().catch(() => {}),
-        workflow.refetch().catch(() => {}),
-      ]);
-      toast.success("Re-segmentation complete — profiling marked done");
-    } catch {
-      toast.error("Re-segmentation failed");
-    } finally {
-      setResegmenting(false);
-    }
-  }, [seg, runs, thresholds, workflow, metric]);
-
-  // Task 4 — reload the persisted (saved) segmentation + audit runs.
   const loadSaved = useCallback(() => {
     void seg.refetch().catch(() => {});
     void runs.refetch().catch(() => {});
   }, [seg, runs]);
-
-  // Streamlit parity: Profile & Route is "done" as soon as the routing matrix has
-  // been computed — it does NOT require an explicit Re-Segment / Validate & Save.
-  // Auto-mark the step complete once segmentation has loaded so Forecast unlocks.
-  const autoMarked = useRef(false);
-  useEffect(() => {
-    if (
-      !autoMarked.current &&
-      seg.data &&
-      workflow.data &&
-      !workflow.data.profileCompleted
-    ) {
-      autoMarked.current = true;
-      void workflowService
-        .complete("profile")
-        .then(() => workflow.refetch())
-        .catch(() => {});
-    }
-  }, [seg.data, workflow.data, workflow]);
 
   const gated = !workflow.isLoading && workflow.data && !workflow.data.edaCompleted;
   const profileDone = workflow.data?.profileCompleted;
@@ -281,16 +322,13 @@ export function ProfileRouteView() {
     <PageShell
       title="Profile & Route"
       actions={
-        !gated ? (
+        !gated && proceeded ? (
           <>
             <Button variant="outline" onClick={() => downloadCsv(skus)} disabled={seg.isLoading || skus.length === 0}>
               <Download className="size-4" /> Download
             </Button>
             <Button variant="outline" onClick={loadSaved} disabled={seg.isLoading || !metric}>
               <FolderOpen className="size-4" /> Load saved segments
-            </Button>
-            <Button onClick={resegment} disabled={resegmenting || seg.isLoading || !metric}>
-              <RefreshCw className={cn("size-4", resegmenting && "animate-spin")} /> Rerun Segmentation
             </Button>
           </>
         ) : undefined
@@ -304,8 +342,7 @@ export function ProfileRouteView() {
         variant="network"
       />
 
-      {/* Task 3 — Performance Metric (required): numeric column driving
-          contribution classification. Gates Rerun / Load until selected. */}
+      {/* Performance Metric (required): numeric column driving contribution. */}
       {!gated ? (
         <Card>
           <CardContent className="flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -341,38 +378,19 @@ export function ProfileRouteView() {
         </Card>
       ) : null}
 
-      {/* Tasks 3-4 — forecast segmentation source control. Shown ONLY when an
-          uploaded segment column exists; otherwise the generated segmentation is
-          used automatically (mandatory) and no checkbox appears. Run Segmentation
-          stays available in BOTH cases (the page actions, above). */}
-      {!gated && hasSegmentColumn ? (
-        <Card>
-          <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0">
-              <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
-                Forecast segmentation source
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                An uploaded{" "}
-                <code className="rounded bg-secondary px-1 py-0.5 text-[0.7rem]">{config?.segmentCol}</code>{" "}
-                column was detected. Forecasts use it by default — tick the box to use the newly
-                generated segmentation instead. You can still rerun segmentation either way.
-              </p>
-            </div>
-            <label className="flex shrink-0 items-center gap-2 text-sm font-medium text-foreground">
-              <input
-                type="checkbox"
-                checked={useGenerated}
-                onChange={(e) => void toggleUseGenerated(e.target.checked)}
-                aria-label="Use newly generated segmentation for forecasts"
-              />
-              Use newly generated segmentation for forecasts
-            </label>
-          </CardContent>
-        </Card>
+      {/* Forecast Segmentation Source — informational: shows which of the two
+          independent sources is active. The choice is made via the Run
+          Segmentation popup / Use Existing Segments buttons below. */}
+      {!gated && data ? (
+        <SourceCard
+          hasUploaded={hasSegmentColumn}
+          segmentColumn={config?.segmentCol ?? null}
+          proceeded={proceeded}
+          activeSource={activeSource}
+        />
       ) : null}
 
-      {/* Task 4 — segmentation status panel (header). */}
+      {/* Segmentation Validated — status header. */}
       {!gated && data ? (
         <Card>
           <CardContent className="flex flex-col gap-2 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -412,7 +430,7 @@ export function ProfileRouteView() {
           message={seg.error?.message}
           onRetry={() => void seg.refetch().catch(() => {})}
         />
-      ) : seg.isLoading || !data ? (
+      ) : seg.isLoading || !data || !sourceSynced ? (
         <>
           <Skeleton className="h-10 w-72" />
           <SegmentGridSkeleton />
@@ -431,9 +449,14 @@ export function ProfileRouteView() {
           thresholds={thresholds}
           onPreview={preview}
           onValidate={validate}
-          busy={resegmenting || seg.isLoading}
+          busy={running || seg.isLoading}
+          running={running}
           levelPlural={levelPlural}
           levelLabel={levelLabel}
+          onRunSegmentation={runSegmentation}
+          showUseExisting={hasSegmentColumn}
+          onUseExisting={useExisting}
+          showDetails={proceeded}
         />
       )}
 
@@ -443,7 +466,59 @@ export function ProfileRouteView() {
         onOpenChange={setDrawerOpen}
         thresholds={thresholds}
       />
+
+      {/* Workflow B/C — summary of the generated segmentation + the opt-in to use it. */}
+      <GeneratedSegmentationDialog
+        open={popupOpen}
+        segments={generatedResult?.segments ?? []}
+        levelPlural={levelPlural}
+        onProceed={onProceed}
+        onOpenChange={setPopupOpen}
+      />
     </PageShell>
+  );
+}
+
+/** Forecast Segmentation Source — informational status of the ACTIVE source. */
+function SourceCard({
+  hasUploaded,
+  segmentColumn,
+  proceeded,
+  activeSource,
+}: {
+  hasUploaded: boolean;
+  segmentColumn: string | null;
+  proceeded: boolean;
+  activeSource: SegmentationSource;
+}) {
+  const activeLabel =
+    activeSource === "uploaded" ? "Uploaded Segments" : "Newly generated segmentation";
+  return (
+    <Card>
+      <CardContent className="space-y-2 py-4">
+        <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
+          Forecast segmentation source
+        </p>
+        {!hasUploaded ? (
+          <p className="text-xs text-muted-foreground">
+            No uploaded Segments column — the generated segmentation is used automatically.
+          </p>
+        ) : !proceeded ? (
+          <p className="text-xs text-muted-foreground">
+            An uploaded{" "}
+            <code className="rounded bg-secondary px-1 py-0.5 text-[0.7rem]">{segmentColumn}</code>{" "}
+            column was detected. Choose <span className="font-medium">Run Segmentation</span> or{" "}
+            <span className="font-medium">Use Existing Segments</span> below. The uploaded Segments
+            are never overwritten.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Active source: <span className="font-medium text-foreground">{activeLabel}</span>. Both
+            sources are kept independently — re-run or use existing Segments below to switch.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -493,8 +568,13 @@ function ProfileContent({
   onPreview,
   onValidate,
   busy,
+  running,
   levelPlural,
   levelLabel,
+  onRunSegmentation,
+  showUseExisting,
+  onUseExisting,
+  showDetails,
 }: {
   data: SegmentationResult;
   filtered: SegmentedSku[];
@@ -509,12 +589,16 @@ function ProfileContent({
   onPreview: (t: SegmentationThresholds) => void;
   onValidate: (t: SegmentationThresholds, validatedBy: string, notes: string) => void;
   busy: boolean;
+  running: boolean;
   levelPlural: string;
   levelLabel: string;
+  onRunSegmentation: (t: SegmentationThresholds) => void;
+  showUseExisting: boolean;
+  onUseExisting: () => void;
+  /** Render the full routing page (post-Proceed) vs. the clean pre-run controls. */
+  showDetails: boolean;
 }) {
   const [traceSku, setTraceSku] = useState<string | null>(null);
-  // Algorithm registry (STRATEGY_INFO + additional benchmarks) for the Final
-  // Algorithm Selection portfolio (Issue 5 parity).
   const algorithms = useAsync(() => forecastService.algorithms(), []);
   const trace = useAsync(
     async () => (traceSku ? segmentationService.trace(traceSku, thresholds) : null),
@@ -545,205 +629,204 @@ function ProfileContent({
         </div>
       </Disclosure>
 
-      {/* Segmentation threshold controls + Validate & Save */}
+      {/* Segmentation thresholds (always expanded) + the segmentation actions
+          (Run Segmentation, Use Existing Segments) + Validate & Save. */}
       <SegmentThresholds
         params={data.params}
         onPreview={onPreview}
         onValidate={onValidate}
         busy={busy}
+        running={running}
+        onRun={onRunSegmentation}
+        showUseExisting={showUseExisting}
+        onUseExisting={onUseExisting}
       />
 
-      {/* Database run banner */}
-      {latestRun ? (
-        <div className="rounded-md border-l-4 border-primary bg-primary/5 px-4 py-2.5 text-sm">
-          <span className="font-semibold text-foreground">Loaded from database.</span>{" "}
-          <span className="text-muted-foreground">
-            Run <code className="rounded bg-secondary px-1 py-0.5 text-xs">{latestRun.runId}</code> — previously-validated labels reused.
-          </span>
-        </div>
-      ) : (
-        <div className="rounded-md border-l-4 border-warning bg-warning/10 px-4 py-2.5 text-sm text-foreground">
-          Computed on demand — click <span className="font-semibold">Re-Segment</span> to persist a validated run.
-        </div>
-      )}
-
-      {/* KPIs */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiTile icon={PackageSearch} label={`Profiled ${levelPlural}`} value={formatNumber(data.totalSkus)} />
-        <KpiTile icon={Layers} label="Segments" value={formatNumber(data.segments.length)} />
-        <KpiTile
-          icon={Tags}
-          label="Top segment"
-          value={topSegment ? topSegment.segment : "—"}
-          meta={topSegment?.revenueSharePct != null ? `${formatPercent(topSegment.revenueSharePct / 100)} of revenue` : undefined}
-        />
-        <KpiTile icon={Tags} label="Brands" value={formatNumber(data.brands.length)} />
-      </div>
-
-      {/* Phase Y.1 · Task 1 — Profile & Route is the main routing-explanation
-          screen. Each segment card surfaces its primary / secondary models,
-          routing rationale, feature tags, and a footer with the confidence
-          method, reconciliation level and residual correction — alongside the
-          existing segment colour, count and contribution share. READ-ONLY: all
-          values come from the stored segment architecture; no routing changes. */}
-      <section id="segmentation" className="scroll-mt-24 space-y-2">
-        <h3 className="text-base font-semibold tracking-tight text-foreground">
-          Segment Routing & Model Architecture
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          How each segment is forecast — primary &amp; secondary models, engineered drivers,
-          confidence-interval method, reconciliation and residual correction.
-        </p>
-        <SegmentArchitecture
-          segments={data.segments}
-          levelPlural={levelPlural}
-          revenueBasis={data.revenueBasis}
-        />
-      </section>
-
-      {/* Trace accordion */}
-      <Disclosure title={`🔍 Trace a ${levelLabel} — show the exact arithmetic`}>
-        <p className="mb-3 text-sm text-muted-foreground">
-          Pick any {levelLabel.toLowerCase()} to see the step-by-step derivation of its segment label, with real numbers.
-        </p>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="justify-between gap-2 sm:w-64">
-              <span className="truncate font-mono text-xs">{traceSku ?? `Select a ${levelLabel}…`}</span>
-              <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="max-h-80 w-64 overflow-y-auto">
-            {data.skus.map((s) => (
-              <DropdownMenuItem key={s.sku} onSelect={() => setTraceSku(s.sku)} className="font-mono text-xs">
-                {s.sku}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <div className="mt-3">
-          {!traceSku ? null : trace.isLoading ? (
-            <Skeleton className="h-40 w-full" />
-          ) : trace.isError ? (
-            <ErrorState title="Couldn’t load trace" message={trace.error?.message} />
-          ) : trace.data ? (
-            <TraceSteps trace={trace.data} />
-          ) : null}
-        </div>
-      </Disclosure>
-
-      {/* Brand × Segment crosstab accordion */}
-      {data.brandSegmentMatrix && data.brandSegmentMatrix.brands.length ? (
-        <Disclosure title="Brand × Segment breakdown">
-          <p className="mb-3 text-sm text-muted-foreground">
-            {levelLabel} counts per brand per segment (top {data.brandSegmentMatrix.brands.length} brands).
-          </p>
-          <BrandSegmentMatrixTable matrix={data.brandSegmentMatrix} />
-        </Disclosure>
-      ) : null}
-
-      {/* Forecast-level table */}
-      <span id="sku-profiles" className="block scroll-mt-24" aria-hidden />
-      <Card>
-        <CardContent className="space-y-4 pt-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative flex-1 sm:max-w-xs">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder={`Search ${levelLabel.toLowerCase()} or brand…`}
-                value={search}
-                onChange={(e) => onSearch(e.target.value)}
-                className="pl-9"
-                aria-label={`Search ${levelPlural}`}
-              />
+      {/* Everything below renders from the ACTIVE segmentation, only once the
+          planner has run segmentation and chosen a source (Proceed). */}
+      {!showDetails ? null : (
+        <>
+          {/* Database run banner */}
+          {latestRun ? (
+            <div className="rounded-md border-l-4 border-primary bg-primary/5 px-4 py-2.5 text-sm">
+              <span className="font-semibold text-foreground">Loaded from database.</span>{" "}
+              <span className="text-muted-foreground">
+                Run <code className="rounded bg-secondary px-1 py-0.5 text-xs">{latestRun.runId}</code> — previously-validated labels reused.
+              </span>
             </div>
+          ) : (
+            <div className="rounded-md border-l-4 border-warning bg-warning/10 px-4 py-2.5 text-sm text-foreground">
+              Computed on demand — click <span className="font-semibold">Run Segmentation</span> to persist a validated run.
+            </div>
+          )}
+
+          {/* KPIs */}
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <KpiTile icon={PackageSearch} label={`Profiled ${levelPlural}`} value={formatNumber(data.totalSkus)} />
+            <KpiTile icon={Layers} label="Segments" value={formatNumber(data.segments.length)} />
+            <KpiTile
+              icon={Tags}
+              label="Top segment"
+              value={topSegment ? topSegment.segment : "—"}
+              meta={topSegment?.revenueSharePct != null ? `${formatPercent(topSegment.revenueSharePct / 100)} of revenue` : undefined}
+            />
+            <KpiTile icon={Tags} label="Brands" value={formatNumber(data.brands.length)} />
+          </div>
+
+          {/* Segment Routing & Model Architecture */}
+          <section id="segmentation" className="scroll-mt-24 space-y-2">
+            <h3 className="text-base font-semibold tracking-tight text-foreground">
+              Segment Routing & Model Architecture
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              How each segment is forecast — primary &amp; secondary models, engineered drivers,
+              confidence-interval method, reconciliation and residual correction.
+            </p>
+            <SegmentArchitecture
+              segments={data.segments}
+              levelPlural={levelPlural}
+              revenueBasis={data.revenueBasis}
+            />
+          </section>
+
+          {/* Trace accordion */}
+          <Disclosure title={`🔍 Trace a ${levelLabel} — show the exact arithmetic`}>
+            <p className="mb-3 text-sm text-muted-foreground">
+              Pick any {levelLabel.toLowerCase()} to see the step-by-step derivation of its segment label, with real numbers.
+            </p>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="justify-between gap-2 sm:w-56">
-                  <span className="truncate">{segmentFilter === ALL ? "All segments" : segmentFilter}</span>
+                <Button variant="outline" className="justify-between gap-2 sm:w-64">
+                  <span className="truncate font-mono text-xs">{traceSku ?? `Select a ${levelLabel}…`}</span>
                   <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="max-h-80 w-64 overflow-y-auto">
-                <DropdownMenuItem onSelect={() => onSegmentFilter(ALL)}>All segments</DropdownMenuItem>
-                {data.segments.map((s) => (
-                  <DropdownMenuItem key={s.segment} onSelect={() => onSegmentFilter(s.segment)}>
-                    {s.segment}
+              <DropdownMenuContent align="start" className="max-h-80 w-64 overflow-y-auto">
+                {data.skus.map((s) => (
+                  <DropdownMenuItem key={s.sku} onSelect={() => setTraceSku(s.sku)} className="font-mono text-xs">
+                    {s.sku}
                   </DropdownMenuItem>
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
-          {filtered.length ? (
-            <SegmentTable data={filtered} onRowClick={onRowClick} />
-          ) : (
-            <EmptyState title={`No matching ${levelPlural}`} description="Adjust your search or segment filter." />
-          )}
-        </CardContent>
-      </Card>
+            <div className="mt-3">
+              {!traceSku ? null : trace.isLoading ? (
+                <Skeleton className="h-40 w-full" />
+              ) : trace.isError ? (
+                <ErrorState title="Couldn’t load trace" message={trace.error?.message} />
+              ) : trace.data ? (
+                <TraceSteps trace={trace.data} />
+              ) : null}
+            </div>
+          </Disclosure>
 
-      {/* Audit trail accordion */}
-      <Disclosure title="Audit Trail — persisted segmentation runs">
-        {runs.length ? (
-          <div className="divide-y divide-border/60">
-            {runs.map((r) => (
-              <div key={r.runId} className="flex items-center justify-between gap-3 py-2 text-sm">
-                <span className="font-mono text-xs text-muted-foreground">{r.runId}</span>
-                <span className="text-muted-foreground">{formatNumber(r.nSkus)} {levelPlural}</span>
-                <span className="text-muted-foreground">{r.validatedBy ?? "—"}</span>
-                <span className="text-xs text-muted-foreground">{formatDateTime(r.runAt)}</span>
+          {/* Brand × Segment crosstab accordion */}
+          {data.brandSegmentMatrix && data.brandSegmentMatrix.brands.length ? (
+            <Disclosure title="Brand × Segment breakdown">
+              <p className="mb-3 text-sm text-muted-foreground">
+                {levelLabel} counts per brand per segment (top {data.brandSegmentMatrix.brands.length} brands).
+              </p>
+              <BrandSegmentMatrixTable matrix={data.brandSegmentMatrix} />
+            </Disclosure>
+          ) : null}
+
+          {/* Forecast-level table */}
+          <span id="sku-profiles" className="block scroll-mt-24" aria-hidden />
+          <Card>
+            <CardContent className="space-y-4 pt-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="relative flex-1 sm:max-w-xs">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    placeholder={`Search ${levelLabel.toLowerCase()} or brand…`}
+                    value={search}
+                    onChange={(e) => onSearch(e.target.value)}
+                    className="pl-9"
+                    aria-label={`Search ${levelPlural}`}
+                  />
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" className="justify-between gap-2 sm:w-56">
+                      <span className="truncate">{segmentFilter === ALL ? "All segments" : segmentFilter}</span>
+                      <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="max-h-80 w-64 overflow-y-auto">
+                    <DropdownMenuItem onSelect={() => onSegmentFilter(ALL)}>All segments</DropdownMenuItem>
+                    {data.segments.map((s) => (
+                      <DropdownMenuItem key={s.segment} onSelect={() => onSegmentFilter(s.segment)}>
+                        {s.segment}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No runs yet — click “Re-Segment” to persist a validated run.</p>
-        )}
-      </Disclosure>
+              {filtered.length ? (
+                <SegmentTable data={filtered} onRowClick={onRowClick} />
+              ) : (
+                <EmptyState title={`No matching ${levelPlural}`} description="Adjust your search or segment filter." />
+              )}
+            </CardContent>
+          </Card>
 
-      {/* Phase X.O · Tasks 1–2 — the informational routing-display sections
-          (Demand Pattern → Model Routing, Per-Segment Model Architecture,
-          Auto-Routed Algorithms, and the Final Algorithm Selection portfolio)
-          were removed. The routing ENGINE is unchanged — only the read-only
-          display is gone. Anchors kept as hidden spans so the section nav still
-          resolves. */}
-      <span id="routing" className="block scroll-mt-24" aria-hidden />
+          {/* Audit trail accordion */}
+          <Disclosure title="Audit Trail — persisted segmentation runs">
+            {runs.length ? (
+              <div className="divide-y divide-border/60">
+                {runs.map((r) => (
+                  <div key={r.runId} className="flex items-center justify-between gap-3 py-2 text-sm">
+                    <span className="font-mono text-xs text-muted-foreground">{r.runId}</span>
+                    <span className="text-muted-foreground">{formatNumber(r.nSkus)} {levelPlural}</span>
+                    <span className="text-muted-foreground">{r.validatedBy ?? "—"}</span>
+                    <span className="text-xs text-muted-foreground">{formatDateTime(r.runAt)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No runs yet — click “Run Segmentation” to persist a validated run.</p>
+            )}
+          </Disclosure>
 
-      <Separator />
+          <span id="routing" className="block scroll-mt-24" aria-hidden />
 
-      {/* Per-Segment Overrides — optional planner preference: pick a primary or
-          add benchmark/extra algorithms per segment (functional control, kept). */}
-      <SegmentOverrides
-        segments={data.segments}
-        algorithms={algorithms.data ?? null}
-        levelPlural={levelPlural}
-      />
+          <Separator />
 
-      {/* Distribution by Segment */}
-      <Card>
-        <CardContent className="space-y-2 pt-6">
-          <h3 className="text-base font-semibold tracking-tight text-foreground">
-            {levelPlural} by Segment
-          </h3>
-          {activeSegments.length ? (
-            <SegmentDistributionChart data={activeSegments} skus={data.skus} levelPlural={levelPlural} />
-          ) : (
-            <EmptyState title="No segments" description="Re-segment to populate the distribution." />
-          )}
-        </CardContent>
-      </Card>
-
-      <span id="algorithm-portfolio" className="block scroll-mt-24" aria-hidden />
-
-      {profileDone ? (
-        <div className="flex justify-end">
-          <ContinueButton
-            href={routes.forecast}
-            label="Continue to Forecast"
-            loadingLabel="Loading Forecast…"
+          {/* Per-Segment Overrides */}
+          <SegmentOverrides
+            segments={data.segments}
+            algorithms={algorithms.data ?? null}
+            levelPlural={levelPlural}
           />
-        </div>
-      ) : null}
+
+          {/* Distribution by Segment */}
+          <Card>
+            <CardContent className="space-y-2 pt-6">
+              <h3 className="text-base font-semibold tracking-tight text-foreground">
+                {levelPlural} by Segment
+              </h3>
+              {activeSegments.length ? (
+                <SegmentDistributionChart data={activeSegments} skus={data.skus} levelPlural={levelPlural} />
+              ) : (
+                <EmptyState title="No segments" description="Run Segmentation to populate the distribution." />
+              )}
+            </CardContent>
+          </Card>
+
+          <span id="algorithm-portfolio" className="block scroll-mt-24" aria-hidden />
+
+          {profileDone ? (
+            <div className="flex justify-end">
+              <ContinueButton
+                href={routes.forecast}
+                label="Continue to Forecast"
+                loadingLabel="Loading Forecast…"
+              />
+            </div>
+          ) : null}
+        </>
+      )}
     </>
   );
 }

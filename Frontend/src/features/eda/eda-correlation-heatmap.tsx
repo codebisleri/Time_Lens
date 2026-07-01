@@ -6,6 +6,9 @@ import { EChartBase } from "@/components/charts/echart-base";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { useAsync } from "@/lib/hooks";
+import { useThemeMode } from "@/lib/theme/use-theme-mode";
+import { readCssVar } from "@/lib/theme/theme-config";
+import { chartColors } from "@/lib/charts/colors";
 import { dataService, edaService } from "@/lib/api/services";
 
 // ID-like columns are identifiers, not drivers — exclude even when numeric.
@@ -46,6 +49,7 @@ function pearson(xs: number[], ys: number[]): number | null {
  * neutral = white, positive = blue.
  */
 export function EdaCorrelationHeatmap({ datasetId }: { datasetId: string }) {
+  const { resolvedMode } = useThemeMode();
   // 1) Server-side correlation (engineered + uploaded drivers). Never throws.
   const corr = useAsync(
     () => (datasetId ? edaService.correlation({ datasetId }).catch(() => null) : Promise.resolve(null)),
@@ -126,11 +130,21 @@ export function EdaCorrelationHeatmap({ datasetId }: { datasetId: string }) {
   }, [backendReady, corr.data, preview.data, dsMeta.data]);
 
   const option = useMemo<EChartsOption>(() => {
-    const data: [number, number, number | string][] = [];
+    void resolvedMode; // re-resolve the theme-bound scale on Light/Dark switch
+    // Theme-bound diverging scale (Issue 4): negative navy → neutral card → positive
+    // orange. No hardcoded hex; tracks Light/Dark via the live tokens.
+    const c = chartColors();
+    const heatNeg = c.negative;
+    const heatMid = readCssVar("--card") || "#ffffff";
+    const heatPos = c.positive;
+    // Undefined correlations (constant column / too few pairs) stay `null` — NOT
+    // the string "-" — so ECharts renders them as an empty cell instead of an
+    // unmappable value that the visualMap colours black.
+    const data: [number, number, number | null][] = [];
     for (let i = 0; i < cols.length; i++) {
       for (let j = 0; j < cols.length; j++) {
         const v = matrix[i]?.[j];
-        data.push([i, j, v == null ? "-" : Number(v.toFixed(2))]);
+        data.push([i, j, v == null ? null : Number(v.toFixed(2))]);
       }
     }
     return {
@@ -139,7 +153,7 @@ export function EdaCorrelationHeatmap({ datasetId }: { datasetId: string }) {
       tooltip: {
         position: "top",
         formatter: (p: unknown) => {
-          const d = p as { value?: [number, number, number | string] };
+          const d = p as { value?: [number, number, number | null] };
           const v = d?.value;
           if (!v) return "";
           const x = cols[v[0]] ?? "", y = cols[v[1]] ?? "";
@@ -163,19 +177,19 @@ export function EdaCorrelationHeatmap({ datasetId }: { datasetId: string }) {
       },
       visualMap: {
         min: -1, max: 1, calculable: true, orient: "horizontal", left: "center", bottom: 8,
-        // Negative = red, neutral = white, positive = blue.
-        inRange: { color: ["#dc2626", "#ffffff", "#2563eb"] },
+        // Theme-bound diverging scale: negative → neutral → positive.
+        inRange: { color: [heatNeg, heatMid, heatPos] },
         text: ["+1", "−1"],
       },
       series: [
         {
           type: "heatmap",
           // y reversed on the axis, so flip the y index to match.
-          data: data.map(([x, y, v]) => [x, cols.length - 1 - y, v] as [number, number, number | string]),
+          data: data.map(([x, y, v]) => [x, cols.length - 1 - y, v] as [number, number, number | null]),
           label: {
             show: cols.length <= 12,
             formatter: (p) => {
-              const val = (p.value as [number, number, number | string])[2];
+              const val = (p.value as [number, number, number | null])[2];
               return typeof val === "number" ? val.toFixed(2) : "";
             },
             fontSize: 10,
@@ -184,7 +198,7 @@ export function EdaCorrelationHeatmap({ datasetId }: { datasetId: string }) {
         },
       ],
     };
-  }, [cols, matrix]);
+  }, [cols, matrix, resolvedMode]);
 
   const loading =
     corr.isLoading || (needFallback && (preview.isLoading || dsMeta.isLoading));

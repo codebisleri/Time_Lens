@@ -1315,6 +1315,14 @@ def apply_top_down_routing(results: List[Any], profiles: pd.DataFrame,
         return results, summary
     levels = [c for c in (cfg.get("top_down_levels") or []) if c in df.columns]
     if not levels:
+        # Task 19 — fall back to a sensible aggregation column so top-down can run
+        # even when the planner didn't pick one (the recommendation flow doesn't
+        # require choosing a level). First present among brand/category/segment.
+        for _cand in ("brand", "category", "segment", "Brand", "Category", "Segment"):
+            if _cand in df.columns:
+                levels = [_cand]
+                break
+    if not levels:
         summary["note"] = "no valid aggregation-level columns in the data"
         return results, summary
     summary["enabled"] = True
@@ -1324,10 +1332,17 @@ def apply_top_down_routing(results: List[Any], profiles: pd.DataFrame,
     apply_flags = cfg.get("top_down_apply") or {}
     disagg = cfg.get("top_down_disagg", "Historical average share")
     noisy_cv2 = float(cfg.get("top_down_noisy_cv2", 0.5))
+    # Task 19 — eligible-SKU allowlist (Volatile + WMAPE>20%). When supplied,
+    # top-down applies to EXACTLY these SKUs (the category apply-flags are bypassed
+    # so the recommendation's own eligibility is authoritative); all other SKUs
+    # keep their normal forecast.
+    allow = {str(s) for s in (cfg.get("top_down_skus") or [])}
 
     prof = profiles.set_index("sku")
 
     def _qualifies(sku):
+        if allow:
+            return "volatile · high error" if str(sku) in allow else None
         if sku not in prof.index:
             return None
         p = prof.loc[sku]
@@ -1447,6 +1462,10 @@ def _engine_cfg(ds: Dict[str, Any], cfg: Dict[str, Any]) -> Dict[str, Any]:
         "top_down_apply": cfg.get("topDownApply") or {},
         "top_down_disagg": cfg.get("topDownDisagg", "Historical average share"),
         "top_down_noisy_cv2": 0.5,
+        # Task 19 — explicit eligible-SKU allowlist (Volatile segment + WMAPE>20%).
+        # When present, top-down is applied to EXACTLY these SKUs; the remaining
+        # SKUs keep their normal forecast.
+        "top_down_skus": [str(s) for s in (cfg.get("topDownSkus") or [])],
     }
 
 
@@ -1544,7 +1563,8 @@ def _all_models_rows(res: "engine.ForecastResult") -> List[Dict[str, Any]]:
 
 def build_forecast_detail(res: "engine.ForecastResult", history: pd.Series,
                           horizon: str, brand: Optional[str] = None,
-                          segment: Optional[str] = None) -> Dict[str, Any]:
+                          segment: Optional[str] = None,
+                          routing_segment: Optional[str] = None) -> Dict[str, Any]:
     points: List[Dict[str, Any]] = []
 
     # Historical actuals
@@ -1598,6 +1618,11 @@ def build_forecast_detail(res: "engine.ForecastResult", history: pd.Series,
         "skuName": str(res.sku),
         "brand": brand,
         "segment": segment,
+        # The GENERATED Volatility × Contribution routing segment (independent of
+        # the active display source) — drives the Top-Down recommendation rule
+        # "Routing Segment contains Volatile AND WMAPE > 20%". Falls back to the
+        # active segment when a profile segment isn't available.
+        "routingSegment": routing_segment or segment,
         "horizon": horizon,
         "model": map_model(res.strategy_used),
         "strategyUsed": res.strategy_used,
@@ -1812,6 +1837,10 @@ def _resolve_config(row: sqlite3.Row) -> Dict[str, Any]:
         "topDownLevels": [],
         "topDownApply": {"cold": True, "short": False, "lumpy": True, "noisy": False},
         "topDownDisagg": "Historical average share",
+        # Task 19 — eligible-SKU allowlist for the recommendation flow (Volatile +
+        # WMAPE>20%). Persisted so the forecast worker applies top-down to exactly
+        # these SKUs; reset each run by the planner's choice.
+        "topDownSkus": [],
     }
     defaults.update({k: v for k, v in saved.items() if k in defaults})
     return defaults
@@ -2650,23 +2679,14 @@ def _forecast_worker(job_id: str, ds: Dict[str, Any], chosen_skus: List[str],
         # eliminates the Profile-vs-Forecast ambiguity (e.g. SKU-0065).
         seg_col = cfg.get("segmentCol")
         _has_uploaded = bool(seg_col) and str(seg_col) in set(df.columns.astype(str))
-        segment_source = (
-            "generated"
-            if (bool(cfg.get("useGeneratedSegmentation")) or not _has_uploaded)
-            else "uploaded"
-        )
+        # Single source of truth for the ACTIVE segmentation (shared with the
+        # Profile & Route GET endpoint via _active_segment_source).
+        segment_source = _active_segment_source(cfg, _has_uploaded)
         seg_by_sku: Dict[str, str] = {}
         if segment_source == "uploaded":
             # Read the user-selected uploaded segment column verbatim (first value
             # per entity). This is the ONLY source when active.
-            try:
-                _u = df[[skc, str(seg_col)]].dropna().groupby(skc)[str(seg_col)].first()
-                for _k, _v in _u.items():
-                    _vs = str(_v).strip()
-                    if _vs and _vs.lower() not in ("unknown", "nan", "none", ""):
-                        seg_by_sku[str(_k)] = _vs
-            except Exception as exc:
-                logging.warning("uploaded segment read failed: %s", exc)
+            seg_by_sku = _uploaded_segment_by_sku(df, skc, str(seg_col))
         elif level_mode == "sku":  # generated (Profile & Route computed)
             try:
                 _seg_res = _build_segmentation(dict(ds), _resolve_seg_params(_seg_param_overrides({})))
@@ -2737,6 +2757,9 @@ def _forecast_worker(job_id: str, ds: Dict[str, Any], chosen_skus: List[str],
                     res, history, horizon,
                     brand=(str(profile_row.get("brand")) if profile_row.get("brand") else None),
                     segment=_seg_for(res.sku, profile_row),  # Phase X.G — saved segment
+                    # The GENERATED routing classification (Volatility × Contribution),
+                    # independent of the active display source — used by the Top-Down rule.
+                    routing_segment=(str(profile_row.get("segment")) if profile_row.get("segment") else None),
                 )
                 units = clean_float(res.forecast.sum()) if isinstance(res.forecast, pd.Series) else None
                 return detail, units
@@ -3612,7 +3635,8 @@ def _scenario_feature_sensitivity(ds: Dict[str, Any], sku: str, features: List[s
 def _whatif_worker(job_id: str, ds: Dict[str, Any], sku: str, periods: int,
                    models: List[str], adjustments: List[Dict[str, Any]],
                    start: Optional[str], end: Optional[str],
-                   causal_ate: Optional[float] = None) -> None:
+                   causal_ate: Optional[float] = None,
+                   monthly_values: Optional[Dict[str, List[Any]]] = None) -> None:
     """Phase Y.15 — the scenario operates on the EXISTING forecast. It reads the
     SKU's stored baseline forecast and applies the driver adjustments (a
     history-derived sensitivity, or the supplied DoWhy causal effect) directly to
@@ -3649,35 +3673,73 @@ def _whatif_worker(job_id: str, ds: Dict[str, Any], sku: str, periods: int,
         if end:
             mask &= baseline.index <= pd.to_datetime(end)
 
-        applied = [a for a in adjustments if a.get("feature") in avail]
-        sens = _scenario_feature_sensitivity(ds, sku, [str(a.get("feature")) for a in applied])
         scenario = baseline.copy().astype(float)
-        # Causal effect applies only to a single-lever scenario (parity with the
-        # Streamlit "Apply causal estimate" path); otherwise use the driver
-        # sensitivity. Either way: baseline + driver effect, NO re-forecast.
-        single_causal = causal_ate is not None and len(applied) == 1
         contribs: List[Dict[str, Any]] = []
-        for a in applied:
-            f = str(a.get("feature"))
-            t = str(a.get("type") or "")
-            try:
-                v = float(a.get("value"))
-            except (TypeError, ValueError):
-                continue
-            r, level = sens.get(f, (None, None))
-            if t == "Percentage Change":
-                rel = v / 100.0
-            elif t == "Constant Change":
-                rel = (v / level) if level else 0.0
-            else:  # "Set to New Value"
-                rel = ((v - level) / level) if level else 0.0
-            impact = pd.Series(0.0, index=baseline.index)
-            if single_causal and np.isfinite(float(causal_ate)) and level is not None:
-                impact.loc[mask] = (level * rel) * float(causal_ate)
-            else:
-                impact.loc[mask] = baseline.loc[mask] * ((r or 0.0) * rel)
-            scenario = scenario + impact
-            contribs.append({"label": f, "value": clean_float(impact.sum()), "type": "delta"})
+        applied: List[Dict[str, Any]] = []
+
+        if monthly_values:
+            # ── Editable monthly-grid path: per-feature ABSOLUTE target values,
+            # one per forecast month (aligned by position to the baseline months,
+            # which are sorted ascending). Each cell is a per-month "set to value":
+            # the demand impact reuses the SAME history-derived sensitivity
+            # (r, level) the single-rule path uses —
+            #   impact[m] = baseline[m] * r * (value[m] - level) / level
+            # — so the math stays consistent and NO forecast is re-run. Invalid /
+            # non-numeric cells are skipped (the baseline value is retained).
+            feats = [f for f in monthly_values if f in avail]
+            sens = _scenario_feature_sensitivity(ds, sku, feats)
+            base_idx = list(baseline.index)
+            for f in feats:
+                vals = monthly_values.get(f) or []
+                r, level = sens.get(f, (None, None))
+                if not level:
+                    continue
+                impact = pd.Series(0.0, index=baseline.index)
+                month_vals: List[float] = []
+                for i, idx in enumerate(base_idx):
+                    if i >= len(vals):
+                        break
+                    try:
+                        v = float(vals[i])
+                    except (TypeError, ValueError):
+                        continue
+                    if not np.isfinite(v):
+                        continue
+                    rel = (v - level) / level
+                    impact.loc[idx] = float(baseline.loc[idx]) * ((r or 0.0) * rel)
+                    month_vals.append(v)
+                scenario = scenario + impact
+                contribs.append({"label": f, "value": clean_float(impact.sum()), "type": "delta"})
+                rep = clean_float(float(np.mean(month_vals))) if month_vals else clean_float(level)
+                applied.append({"feature": f, "type": "Set to New Value", "value": rep})
+        else:
+            applied = [a for a in adjustments if a.get("feature") in avail]
+            sens = _scenario_feature_sensitivity(ds, sku, [str(a.get("feature")) for a in applied])
+            # Causal effect applies only to a single-lever scenario (parity with the
+            # Streamlit "Apply causal estimate" path); otherwise use the driver
+            # sensitivity. Either way: baseline + driver effect, NO re-forecast.
+            single_causal = causal_ate is not None and len(applied) == 1
+            for a in applied:
+                f = str(a.get("feature"))
+                t = str(a.get("type") or "")
+                try:
+                    v = float(a.get("value"))
+                except (TypeError, ValueError):
+                    continue
+                r, level = sens.get(f, (None, None))
+                if t == "Percentage Change":
+                    rel = v / 100.0
+                elif t == "Constant Change":
+                    rel = (v / level) if level else 0.0
+                else:  # "Set to New Value"
+                    rel = ((v - level) / level) if level else 0.0
+                impact = pd.Series(0.0, index=baseline.index)
+                if single_causal and np.isfinite(float(causal_ate)) and level is not None:
+                    impact.loc[mask] = (level * rel) * float(causal_ate)
+                else:
+                    impact.loc[mask] = baseline.loc[mask] * ((r or 0.0) * rel)
+                scenario = scenario + impact
+                contribs.append({"label": f, "value": clean_float(impact.sum()), "type": "delta"})
 
         scenario = scenario.clip(lower=0.0)
         base_total = clean_float(baseline.sum())
@@ -3693,6 +3755,7 @@ def _whatif_worker(job_id: str, ds: Dict[str, Any], sku: str, periods: int,
 
         result = {
             **base_template, "supported": True, "message": message,
+            "appliedAdjustments": applied,
             "baselineTotal": base_total, "scenarioTotal": scen_total,
             "deltaUnits": clean_float(delta), "changePct": clean_float(pct),
             "series": series, "waterfall": waterfall,
@@ -3758,6 +3821,11 @@ def run_scenario(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         causal_ate = float(causal_ate) if causal_ate is not None else None
     except (TypeError, ValueError):
         causal_ate = None
+    # Editable What-If grid: per-feature ABSOLUTE monthly values. When present this
+    # drives the scenario (per-month "set to value") instead of `adjustments`.
+    monthly_values = payload.get("monthlyValues")
+    if not isinstance(monthly_values, dict):
+        monthly_values = None
 
     job_id = f"job_{uuid.uuid4().hex[:12]}"
     job = {
@@ -3769,10 +3837,44 @@ def run_scenario(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     _job_create(job)
     threading.Thread(
         target=_whatif_worker,
-        args=(job_id, ds, sku, periods, models, adjustments, start, end, causal_ate),
+        args=(job_id, ds, sku, periods, models, adjustments, start, end, causal_ate,
+              monthly_values),
         daemon=True,
     ).start()
     return dict(job)
+
+
+@app.get("/scenarios/whatif/grid")
+def whatif_grid(datasetId: Optional[str] = Query(None),
+                skuId: Optional[str] = Query(None)) -> Dict[str, Any]:
+    """Editable What-If grid scaffold: the forecast-horizon MONTHS (columns) +
+    each adjustable feature's baseline level (seeds every cell). READ-ONLY — the
+    months come from the SKU's stored baseline forecast and the baselines are the
+    history-derived mean level the scenario math is relative to. No model is
+    re-fit / re-forecast."""
+    ds_id = datasetId or latest_dataset_id()
+    sku = str(skuId or "").strip()
+    empty = {"available": False, "months": [], "features": [], "message": ""}
+    if ds_id is None or not sku:
+        return {**empty, "message": "Select a forecast level first."}
+    try:
+        ds = dict(load_dataset_row(ds_id))
+        baseline, _champ = _stored_baseline_series(ds_id, sku)
+        if baseline is None or not len(baseline):
+            return {**empty, "message": ("No completed forecast found for this item. "
+                                         "Run a forecast first — the scenario builds on it.")}
+        months = [iso_date(idx) for idx in baseline.index]
+        feats = _scenario_exog_features(ds, sku)
+        sens = _scenario_feature_sensitivity(ds, sku, feats)
+        features: List[Dict[str, Any]] = []
+        for f in feats:
+            _r, level = sens.get(f, (None, None))
+            features.append({"name": f,
+                             "baseline": clean_float(level) if level is not None else 0.0})
+        return {"available": True, "months": months, "features": features, "message": ""}
+    except Exception as exc:
+        logging.warning("whatif grid failed: %s", exc)
+        return {**empty, "message": str(exc)[:200]}
 
 
 @app.post("/scenarios/save")
@@ -4273,6 +4375,10 @@ def forecast_metrics(
             "strategyLabel": d.get("strategyLabel"),
             "brand": d.get("brand"),
             "segment": d.get("segment"),
+            # Generated routing segment — used by the Top-Down eligibility rule
+            # ("Routing Segment contains Volatile"). Falls back to the active
+            # segment for runs persisted before this field existed.
+            "routingSegment": d.get("routingSegment") or d.get("segment"),
             "trainWmape": tw,
             "testWmape": te,
             "bias": clean_float(bias_frac * 100) if bias_frac is not None else None,
@@ -5335,10 +5441,52 @@ def _segment_architecture_detail(segment: str) -> Dict[str, Any]:
     }
 
 
-def _build_segmentation(ds: Dict[str, Any], params: Dict[str, Any]) -> Dict[str, Any]:
+def _uploaded_segment_by_sku(df: "pd.DataFrame", sku_col: str, seg_col: str) -> Dict[str, str]:
+    """Map each entity → its UPLOADED segment label (first non-empty value per
+    entity). READ-ONLY: the uploaded column is never modified. Used as the single
+    source of truth for the 'uploaded' segmentation everywhere (forecast worker +
+    Profile & Route), so both render identically."""
+    out: Dict[str, str] = {}
+    try:
+        u = df[[sku_col, seg_col]].dropna().groupby(sku_col)[seg_col].first()
+        for k, v in u.items():
+            vs = str(v).strip()
+            if vs and vs.lower() not in ("unknown", "nan", "none", ""):
+                out[str(k)] = vs
+    except Exception as exc:  # best-effort; never block segmentation
+        logging.warning("uploaded segment read failed: %s", exc)
+    return out
+
+
+def _active_segment_source(cfg: Dict[str, Any], has_uploaded: bool) -> str:
+    """The single ACTIVE segmentation source for a dataset. Generated wins when the
+    user opted into it OR no uploaded column exists; otherwise the uploaded column
+    is active. This is the ONE rule consumed by every downstream module (forecast,
+    explainability, scenario, reports, top-down, submission, routing)."""
+    if bool(cfg.get("useGeneratedSegmentation")) or not has_uploaded:
+        return "generated"
+    return "uploaded"
+
+
+def _build_segmentation(
+    ds: Dict[str, Any], params: Dict[str, Any], source: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Build the Profile & Route segmentation payload.
+
+    `source` selects which segmentation is rendered:
+      • "generated" — the engine's computed Volatility × Contribution matrix.
+      • "uploaded"  — the user's uploaded segment column (labels verbatim); the
+        engine's per-SKU stats (volatility/CV/pattern) are kept, only the SEGMENT
+        LABEL is replaced. The uploaded column is NEVER modified.
+      • None        — resolve the ACTIVE source from config (so downstream callers
+        that don't care automatically consume the active segmentation).
+    Generated stats are always computed first, so neither source overwrites the
+    other — they are produced independently from the immutable dataset.
+    """
     df = load_dataset_df(ds)
     sku_col, date_col, sales_col = ds["sku_col"], ds["date_col"], ds["sales_col"]
-    df = _apply_history_window(df, date_col, _resolve_config(ds))
+    cfg = _resolve_config(ds)
+    df = _apply_history_window(df, date_col, cfg)
     all_cols = list(df.columns.astype(str))
     revenue_col = _pick_column(all_cols, ["revenue", "total_revenue", "sales_value"])
     brand_col = _pick_column(all_cols, ["brand", "manufacturer", "vendor", "label"])
@@ -5354,6 +5502,22 @@ def _build_segmentation(ds: Dict[str, Any], params: Dict[str, Any]) -> Dict[str,
         churn_months=params["churn_months"],
         short_history_months=params["short_history_months"],
     )
+
+    # ── Source resolution — uploaded vs generated ────────────────────────────
+    seg_col = cfg.get("segmentCol")
+    has_uploaded = bool(seg_col) and str(seg_col) in set(df.columns.astype(str))
+    eff_source = source or _active_segment_source(cfg, has_uploaded)
+    if eff_source == "uploaded" and not has_uploaded:
+        eff_source = "generated"  # no uploaded column → fall back gracefully
+    if eff_source == "uploaded":
+        # Replace ONLY the segment label with the uploaded value (per-SKU stats
+        # stay). The generated `seg` frame is left intact above; we copy here so
+        # the generated computation is never mutated in place.
+        uploaded_by_sku = _uploaded_segment_by_sku(df, sku_col, str(seg_col))
+        seg = seg.copy()
+        seg["segment"] = (
+            seg[sku_col].astype(str).map(uploaded_by_sku).fillna("Unsegmented")
+        )
 
     brand_by_sku: Dict[str, str] = {}
     if brand_col:
@@ -5413,6 +5577,15 @@ def _build_segmentation(ds: Dict[str, Any], params: Dict[str, Any]) -> Dict[str,
     grid += [_grid_card(s, "lifecycle") for s in lifecycle_order]
     if int(counts.get("CV NULL/0", 0)) > 0:
         grid.append(_grid_card("CV NULL/0", "triage"))
+    # Uploaded segmentations may use labels outside the canonical matrix — surface
+    # every distinct uploaded label as its own card so the filter dropdown, the
+    # distribution chart and the brand × segment table all reflect the uploaded
+    # source faithfully (canonical labels still map onto the 3×3 architecture grid).
+    if eff_source == "uploaded":
+        _known = set(matrix_order) | set(lifecycle_order) | {"CV NULL/0"}
+        for lbl in counts.index:
+            if str(lbl) not in _known:
+                grid.append(_grid_card(str(lbl), "matrix"))
 
     # Brand breakdown.
     brands: List[Dict[str, Any]] = []
@@ -5523,6 +5696,11 @@ def _build_segmentation(ds: Dict[str, Any], params: Dict[str, Any]) -> Dict[str,
         "intermittencyDistribution": intermittency_dist,
         "routing": routing_summary,
         "generatedAt": now_iso(),
+        # Which segmentation this payload represents + whether an uploaded source
+        # is available, so the client can label the active source and offer the
+        # uploaded/generated choice without a second round-trip.
+        "source": eff_source,
+        "hasUploaded": bool(has_uploaded),
     }
 
 
@@ -5542,6 +5720,7 @@ def _seg_param_overrides(src: Dict[str, Any]) -> Dict[str, Any]:
 @app.get("/segmentation")
 def get_segmentation(
     datasetId: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
     highCumShare: Optional[float] = Query(None, ge=0.10, le=0.70),
     midCumShare: Optional[float] = Query(None, ge=0.50, le=0.99),
     minPeriods: Optional[int] = Query(None, ge=2, le=24),
@@ -5549,6 +5728,15 @@ def get_segmentation(
     churnMonths: Optional[int] = Query(None, ge=1, le=24),
     shortHistoryMonths: Optional[int] = Query(None, ge=2, le=24),
 ) -> Dict[str, Any]:
+    """Profile & Route segmentation.
+
+    `source`:
+      • omitted / "active" — the ACTIVE source (resolved from config), so every
+        downstream consumer automatically gets the segmentation in effect.
+      • "uploaded"  — render the uploaded segment column verbatim.
+      • "generated" — render the engine-computed segmentation.
+    The two sources are produced independently; neither overwrites the other.
+    """
     ds_id = datasetId or latest_dataset_id()
     if ds_id is None:
         raise HTTPException(status_code=404, detail="No dataset uploaded yet")
@@ -5557,7 +5745,10 @@ def get_segmentation(
         "minPeriods": minPeriods, "newProductMonths": newProductMonths,
         "churnMonths": churnMonths, "shortHistoryMonths": shortHistoryMonths,
     }))
-    return _build_segmentation(dict(load_dataset_row(ds_id)), params)
+    # Validate the source manually (version-agnostic; unknown values fall back to
+    # the active source rather than erroring).
+    src = source if source in ("uploaded", "generated") else None
+    return _build_segmentation(dict(load_dataset_row(ds_id)), params, source=src)
 
 
 @app.post("/segmentation/run")
@@ -5570,7 +5761,10 @@ def run_segmentation(payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]
         raise HTTPException(status_code=400, detail="No dataset to segment — upload one first")
     ds = dict(load_dataset_row(ds_id))
     params = _resolve_seg_params(_seg_param_overrides(payload))
-    result = _build_segmentation(ds, params)
+    # "Run Segmentation" always produces the GENERATED segmentation (never the
+    # uploaded column) and persists it as a validated audit run. The uploaded
+    # segmentation is independent and is never touched here.
+    result = _build_segmentation(ds, params, source="generated")
 
     validated_by = str(payload.get("validatedBy") or "").strip() or "api_bridge"
     notes = str(payload.get("notes") or "").strip() or "Re-segmentation via API"
@@ -6129,6 +6323,24 @@ def _median(values: List[float]) -> Optional[float]:
     return nums[mid] if len(nums) % 2 else (nums[mid - 1] + nums[mid]) / 2.0
 
 
+def _report_user() -> Optional[str]:
+    """Task 15 — display name / email of the current user for the standardized
+    report header. None when unauthenticated (the field is then omitted)."""
+    uid = _current_uid()
+    if uid is None:
+        return None
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT name, email FROM users WHERE id = ?", (uid,)
+            ).fetchone()
+        if row:
+            return row["name"] or row["email"] or None
+    except Exception:
+        return None
+    return None
+
+
 def _report_row_json(r: sqlite3.Row) -> Dict[str, Any]:
     meta = json.loads(r["meta_json"] or "{}") if "meta_json" in r.keys() else {}
     return {
@@ -6154,7 +6366,9 @@ def _segmentation_report_html(row: sqlite3.Row) -> str:
         new_product_months=p["new_product_months"], churn_months=p["churn_months"],
         short_history_months=p["short_history_months"],
     )
-    cfg = {"sku_col": sku_col, "sales_col": sales_col, "date_col": date_col}
+    # Task 15 — thread Forecast Run + User into the standardized report header.
+    cfg = {"sku_col": sku_col, "sales_col": sales_col, "date_col": date_col,
+           "run_id": _latest_run_id(ds["id"]), "user": _report_user()}
     return engine.build_retail_segmentation_html_report(seg, df, cfg, profiles=None)
 
 
@@ -6204,7 +6418,8 @@ def _routed_forecast_report_html(row: sqlite3.Row) -> str:
 
     periods = (run["periods"] if run and run["periods"] else
                (len(results[0].forecast) if results else 0))
-    cfg = {"horizon": periods}
+    # Task 15 — thread Forecast Run + User into the standardized report header.
+    cfg = {"horizon": periods, "run_id": run_id, "user": _report_user()}
     return engine.build_routed_forecast_html_report(results, profiles, cfg)
 
 

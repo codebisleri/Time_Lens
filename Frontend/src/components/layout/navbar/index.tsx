@@ -4,14 +4,13 @@ import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useUiStore } from "@/lib/stores";
 import { NavBreadcrumbs } from "./nav-breadcrumbs";
-import { CommandTrigger } from "./command-trigger";
 import { ThemeToggle } from "./theme-toggle";
 import { UserMenu } from "./user-menu";
 
 /**
- * Sticky top bar. Left: mobile menu button + breadcrumbs. Center/right: command
- * palette trigger, theme toggle, user menu. Backdrop blur + bottom border give
- * the Stripe/Vercel chrome feel.
+ * Sticky top bar. Left: mobile menu button + breadcrumbs. Center/right: theme
+ * toggle, user menu. Backdrop blur + bottom border give the Stripe/Vercel chrome
+ * feel.
  */
 export function Navbar() {
   const setMobileNavOpen = useUiStore((s) => s.setMobileNavOpen);
@@ -31,9 +30,6 @@ export function Navbar() {
       <NavBreadcrumbs />
 
       <div className="ml-auto flex items-center gap-2">
-        <div className="hidden sm:block">
-          <CommandTrigger />
-        </div>
         <ThemeToggle />
         <UserMenu />
       </div>

@@ -77,7 +77,11 @@ export function ForecastMiniTrendChart({
         {
           name: "Actual",
           type: "line",
+          // Task 10 — monotone-x smoothing keeps the curve from overshooting at
+          // the actual→forecast handoff, so the join reads as one continuous
+          // sweep (no pointed/angular kink). Values are unchanged.
           smooth: true,
+          smoothMonotone: "x",
           showSymbol: false,
           data: actual,
           lineStyle: { width: 2, color: actualColor },
@@ -87,6 +91,7 @@ export function ForecastMiniTrendChart({
           name: "Forecast",
           type: "line",
           smooth: true,
+          smoothMonotone: "x",
           showSymbol: false,
           data: forecast,
           lineStyle: { width: 2, type: "dashed", color: forecastColor },

@@ -42,8 +42,12 @@ export function buildEchartsTheme() {
   // intentionally subtle so it supports the data rather than competing with it.
   const axisLabel = { color: foreground, fontSize: 11.5, fontWeight: 500 as const };
   const axisLineStyle = { lineStyle: { color: brand, opacity: 0.5, width: 1 } };
+  // Dashed gridlines must stay visible in BOTH themes. The previous flat 0.12
+  // opacity made them all-but-invisible in Light Mode (the light grey grid token
+  // on a white card). Drive opacity off the mode: a touch stronger in light, kept
+  // subtle in dark (where the grid token is white).
   const splitLineStyle = {
-    lineStyle: { color: grid, type: "dashed" as const, opacity: 0.12 },
+    lineStyle: { color: grid, type: "dashed" as const, opacity: isDark ? 0.18 : 0.55 },
   };
   const axisName = { color: brand, fontSize: 11, fontWeight: 600 as const };
 

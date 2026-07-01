@@ -59,6 +59,41 @@ export interface RunScenarioPayload {
   /** Apply a DoWhy causal estimate (ATE) directly to the baseline (parity with
    *  render_whatif_tab's "Apply causal estimate from DoWhy" option). */
   causalAte?: number;
+  /** Editable monthly grid (What-If redesign): per-feature ABSOLUTE target values,
+   *  one per forecast month, aligned to `months`. When present this drives the
+   *  scenario (a per-month "set to value") instead of the legacy `adjustments`. */
+  monthlyValues?: Record<string, number[]>;
+  /** ISO month dates the `monthlyValues` columns map to (the forecast horizon). */
+  months?: string[];
+}
+
+// ── Editable What-If grid (Feature × forecast month) ──────────────────────────
+export interface WhatIfGridFeature {
+  name: string;
+  /** Baseline projected level for this feature (seeds every month's cell). */
+  baseline: number;
+}
+
+export interface WhatIfGridResponse {
+  available: boolean;
+  /** Forecast-horizon months (ISO dates) — the editable grid's columns. */
+  months: ISODateString[];
+  features: WhatIfGridFeature[];
+  message: string;
+}
+
+/** DoWhy causal-graph output cached in scenario state and consumed by What-If. */
+export interface StoredCausalGraph {
+  sku: string;
+  dotGraph: string;
+  variables: {
+    treatments: string[];
+    outcome: string;
+    confounders: string[];
+    instruments: string[];
+    effect_modifiers: string[];
+  };
+  generatedAt: ISODateString;
 }
 
 // ── Causal Effect Estimation (DoWhy) — parity with render_causal_tab ──────────

@@ -15370,8 +15370,13 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
   header.hero .subtitle {{
     font-size: 0.92rem; opacity: 0.85; margin-top: 4px;
   }}
-  header.hero .meta {{ text-align: right; font-size: 0.85rem; opacity: 0.85; }}
-  header.hero .meta b {{ color: var(--orange); }}
+  header.hero .meta {{ text-align: right; font-size: 0.85rem; opacity: 0.9; }}
+  header.hero .meta b {{ color: var(--orange); font-weight: 600; }}
+  header.hero .meta div {{ margin-bottom: 3px; }}
+  /* Task 15 — standardized logo lockup (Time Lens analog-clock mark + name). */
+  header.hero .lockup {{ display: flex; align-items: center; gap: 16px; }}
+  header.hero .clock {{ width: 52px; height: 52px; flex-shrink: 0;
+                        filter: drop-shadow(0 2px 6px rgba(0,0,0,0.25)); }}
 
   /* === Headings === */
   h1, h2, h3, h4 {{ color: var(--blue); font-weight: 700; letter-spacing: -0.01em; }}
@@ -15511,17 +15516,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
 </style>
 </head>
 <body>
-<header class="hero">
-  <div>
-    <div class="brand">Dhisha<span class="accent">AI</span> Time Lens</div>
-    <div class="title">{title}</div>
-    <div class="subtitle">{subtitle}</div>
-  </div>
-  <div class="meta">
-    <div><b>Build</b> v2.6 · Retail Edition</div>
-    <div>Generated {now}</div>
-  </div>
-</header>
+{header}
 <div class="toc-box">
   <strong>Contents</strong>
   {toc}
@@ -15533,6 +15528,60 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
 </footer>
 </body>
 </html>"""
+
+
+# Task 15 — the Time Lens analog-clock mark (static SVG for print/PDF/HTML). Navy
+# dial + orange outer arc + white hands, matching the in-app PremiumLiveClock.
+_TIMELENS_CLOCK_SVG = (
+    '<svg class="clock" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" '
+    'role="img" aria-label="Time Lens logo">'
+    '<circle cx="50" cy="50" r="46" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="5.5"/>'
+    '<path d="M50 4 A46 46 0 0 1 89 73" fill="none" stroke="#ef7602" stroke-width="5.5" '
+    'stroke-linecap="round"/>'
+    '<circle cx="50" cy="50" r="39" fill="#06243b" stroke="rgba(255,255,255,0.14)" stroke-width="1"/>'
+    '<line x1="50" y1="52" x2="50" y2="30" stroke="#ffffff" stroke-width="3.4" '
+    'stroke-linecap="round" transform="rotate(40 50 50)"/>'
+    '<line x1="50" y1="53" x2="50" y2="22" stroke="#ffffff" stroke-width="2.3" '
+    'stroke-linecap="round" transform="rotate(120 50 50)"/>'
+    '<circle cx="50" cy="50" r="4.5" fill="rgba(239,118,2,0.30)"/>'
+    '<circle cx="50" cy="50" r="2.4" fill="#ffffff"/></svg>'
+)
+
+
+def _standard_report_header(title: str, subtitle: str = "", now: str = "",
+                            run_id: Optional[str] = None,
+                            scope: Optional[str] = None,
+                            user: Optional[str] = None) -> str:
+    """TASK 15 — the ONE standardized header used by EVERY downloadable report
+    (segmentation, forecast, routed forecast, EDA). Renders the Time Lens analog-
+    clock logo + application name + report title, plus a meta block with Generated
+    On, Forecast Run, SKU(s)/Scope and User. Optional fields are omitted when
+    absent so every existing caller stays backward-compatible. Returns the full
+    `<header class="hero">…</header>` block that the shared `_HTML_TEMPLATE`
+    substitutes for its `{header}` placeholder."""
+    import html as _html
+    def esc(v: Any) -> str:
+        return _html.escape(str(v))
+    meta_rows = [f"<div><b>Generated On</b> {esc(now)}</div>"] if now else []
+    if run_id:
+        meta_rows.append(f"<div><b>Forecast Run</b> {esc(run_id)}</div>")
+    if scope:
+        meta_rows.append(f"<div><b>SKU(s)</b> {esc(scope)}</div>")
+    if user:
+        meta_rows.append(f"<div><b>User</b> {esc(user)}</div>")
+    sub_html = f'<div class="subtitle">{esc(subtitle)}</div>' if subtitle else ""
+    return (
+        '<header class="hero">'
+        '<div class="lockup">'
+        f'{_TIMELENS_CLOCK_SVG}'
+        '<div>'
+        '<div class="brand">Time<span class="accent">Lens</span></div>'
+        f'<div class="title">{esc(title)}</div>'
+        f'{sub_html}'
+        '</div></div>'
+        f'<div class="meta">{"".join(meta_rows)}</div>'
+        '</header>'
+    )
 
 
 def _section(anchor: str, heading: str, html_body: str) -> Tuple[str, str]:
@@ -15580,10 +15629,15 @@ def build_eda_html_report(eda: 'TimeSeriesEDA', summary_metrics: Dict[str, str],
                              _df_to_html_table(eda.potential_anomalies_df))
         toc_items.append(toc); body_parts.append(html)
 
+    _now = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')
     return _HTML_TEMPLATE.format(
         title="Exploratory Data Analysis",
-        subtitle=f"Time-series profiling at {eda.resample_freq} frequency",
-        now=pd.Timestamp.now().strftime('%Y-%m-%d %H:%M'),
+        now=_now,
+        header=_standard_report_header(
+            title="Exploratory Data Analysis",
+            subtitle=f"Time-series profiling at {eda.resample_freq} frequency",
+            now=_now,
+        ),
         toc=f"<ul class='toc'>{''.join(toc_items)}</ul>",
         body="".join(body_parts),
     )
@@ -15648,10 +15702,18 @@ def build_forecast_html_report(forecast_payload: Dict[str, Any], cfg: Dict[str, 
                              _df_to_html_table(comp))
         toc_items.append(toc); body_parts.append(html)
 
+    _now = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')
     return _HTML_TEMPLATE.format(
         title="Single-Series Forecast Report",
-        subtitle=f"Multi-model competition · winner: {forecast_payload.get('best_model_name', '—')}",
-        now=pd.Timestamp.now().strftime('%Y-%m-%d %H:%M'),
+        now=_now,
+        header=_standard_report_header(
+            title="Single-Series Forecast Report",
+            subtitle=f"Multi-model competition · winner: {forecast_payload.get('best_model_name', '—')}",
+            now=_now,
+            run_id=cfg.get('run_id'),
+            scope=forecast_payload.get('sku') or cfg.get('scope'),
+            user=cfg.get('user'),
+        ),
         toc=f"<ul class='toc'>{''.join(toc_items)}</ul>",
         body="".join(body_parts),
     )
@@ -15869,11 +15931,19 @@ def build_retail_segmentation_html_report(
 
     # ===== Compose =====
     toc_html = "<ul class='toc'>" + "".join(toc_items) + "</ul>"
+    _now = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')
     return _HTML_TEMPLATE.format(
         title="Retail Portfolio Segmentation",
-        subtitle=f"Volatility × Contribution matrix · {n_skus:,} SKUs · "
-                 f"{n_brands or '—'} brands · {date_range_str}",
-        now=pd.Timestamp.now().strftime('%Y-%m-%d %H:%M'),
+        now=_now,
+        header=_standard_report_header(
+            title="Retail Portfolio Segmentation",
+            subtitle=f"Volatility × Contribution matrix · "
+                     f"{n_brands or '—'} brands · {date_range_str}",
+            now=_now,
+            run_id=cfg.get('run_id'),
+            scope=f"{n_skus:,} SKUs",
+            user=cfg.get('user'),
+        ),
         toc=toc_html,
         body="".join(body_parts),
     )
@@ -15926,12 +15996,23 @@ def build_routed_forecast_html_report(results: List['ForecastResult'],
                          _df_to_html_table(sku_df, max_rows=200))
     toc_items.append(toc); body_parts.append(html)
 
+    _now = pd.Timestamp.now().strftime('%Y-%m-%d %H:%M')
+    _subtitle = (
+        f"{cfg.get('horizon', '?')}-period horizon · median WMAPE {median_mape:.1f}%"
+        if pd.notna(median_mape)
+        else f"{cfg.get('horizon', '?')}-period horizon"
+    )
     return _HTML_TEMPLATE.format(
         title="Routed Portfolio Forecast",
-        subtitle=f"{n_skus:,} SKUs · {cfg.get('horizon', '?')}-period horizon · "
-                 f"median WMAPE {median_mape:.1f}%" if pd.notna(median_mape) else
-                 f"{n_skus:,} SKUs · {cfg.get('horizon', '?')}-period horizon",
-        now=pd.Timestamp.now().strftime('%Y-%m-%d %H:%M'),
+        now=_now,
+        header=_standard_report_header(
+            title="Routed Portfolio Forecast",
+            subtitle=_subtitle,
+            now=_now,
+            run_id=cfg.get('run_id'),
+            scope=f"{n_skus:,} SKUs",
+            user=cfg.get('user'),
+        ),
         toc=f"<ul class='toc'>{''.join(toc_items)}</ul>",
         body="".join(body_parts),
     )

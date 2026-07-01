@@ -4,16 +4,24 @@ import { useAsync } from "@/lib/hooks";
 import { segmentationService } from "@/lib/api/services";
 import type {
   SegmentationResult,
-  SegmentationRun,
+  SegmentationSource,
   SegmentationThresholds,
+  SegmentationRun,
 } from "@/types/segmentation";
 
-/** Current segmentation for the active dataset; re-fetches when thresholds change. */
-export function useSegmentation(thresholds?: SegmentationThresholds) {
+/**
+ * Segmentation for the active dataset; re-fetches when thresholds OR the selected
+ * source change. Omit `source` to fetch the ACTIVE segmentation (what downstream
+ * modules consume); pass "uploaded"/"generated" to render a specific source.
+ */
+export function useSegmentation(
+  thresholds?: SegmentationThresholds,
+  source?: SegmentationSource,
+) {
   return useAsync<SegmentationResult>(
-    () => segmentationService.get(thresholds),
+    () => segmentationService.get({ ...thresholds, source }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(thresholds ?? {})],
+    [JSON.stringify(thresholds ?? {}), source ?? ""],
   );
 }
 

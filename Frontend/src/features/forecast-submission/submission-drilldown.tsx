@@ -61,8 +61,8 @@ export function SubmissionDrilldown({ rows }: { rows: SubmissionRow[] }) {
     // dashed line + diamond markers. Drives the legend swatch, line, chart legend
     // and tooltip marker (all read this one color).
     const modelColor = readCssVar("--muted-foreground") || "#8d99a6";
-    const submittedColor = "#EF7602"; // brand orange
-    const lyColor = "#94a3b8"; // grey (slate-400)
+    const submittedColor = readCssVar("--chart-2") || "#EF7602"; // brand orange (theme-bound)
+    const lyColor = readCssVar("--muted-foreground") || "#94a3b8"; // grey (theme-bound)
     const labels = skuRows.map((r) =>
       formatDate(r.forecastMonth, { month: "short", year: "numeric", day: undefined }),
     );

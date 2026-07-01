@@ -7,21 +7,6 @@ import { cn } from "@/lib/utils";
  * are passed to next/image for crispness/optimization).
  */
 
-/** Time Lens product logomark (865×772, ~square). */
-export function TimeLensLogo({ className }: { className?: string }) {
-  return (
-    <Image
-      src="/time-lens-logo.png"
-      alt="Time Lens"
-      width={865}
-      height={772}
-      priority
-      unoptimized
-      className={cn("h-7 w-auto select-none", className)}
-    />
-  );
-}
-
 /**
  * DhishaAI parent-company wordmark (9400×3000, ~3.1:1).
  *

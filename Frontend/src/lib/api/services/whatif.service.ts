@@ -9,6 +9,7 @@ import type {
   RunScenarioPayload,
   SavedScenarioRow,
   ScenarioDetail,
+  WhatIfGridResponse,
 } from "@/types/whatif";
 
 /**
@@ -19,6 +20,14 @@ import type {
 export const whatifService = {
   run(payload: RunScenarioPayload): Promise<ForecastJob> {
     return http.post<ForecastJob>(endpoints.scenarios.run(), payload);
+  },
+  /** Forecast-horizon months + per-feature baseline level for the editable
+   *  What-If grid (read-only; no forecast is re-run). */
+  whatifGrid(skuId: string, datasetId?: string): Promise<WhatIfGridResponse> {
+    return http.get<WhatIfGridResponse>(endpoints.scenarios.whatifGrid(), {
+      skuId,
+      datasetId,
+    });
   },
   save(payload: {
     name: string;

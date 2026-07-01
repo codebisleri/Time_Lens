@@ -25,11 +25,29 @@ export const CHART_SERIES_VARS = [
   "--chart-8",
 ] as const;
 
-/** Resolve an `hsl(var(--token))` string from a raw HSL triplet at runtime. */
+/**
+ * Resolve a theme token to a concrete `hsl(...)` colour at runtime.
+ *
+ * shadcn/Tailwind store HSL as a SPACE-separated triplet (`"213 58% 14%"`). The
+ * browser's CSS engine accepts the space syntax, but ECharts/zrender's colour
+ * parser splits the function arguments on COMMAS — so a space-syntax string
+ * collapses to a single argument and parses to BLACK in every context that has to
+ * interpolate the colour (visualMap colour scales, canvas gradients, alpha
+ * blending). That is what made the correlation heatmap render black and broke
+ * chart gradients.
+ *
+ * Emitting the COMMA syntax (`hsl(213, 58%, 14%)`) is valid for both the browser
+ * (solid fills) AND zrender (interpolation), so it is safe everywhere and fixes
+ * the interpolated contexts globally.
+ */
 export function readCssVar(name: string): string {
   if (typeof window === "undefined") return "";
   const value = getComputedStyle(document.documentElement)
     .getPropertyValue(name)
     .trim();
-  return value ? `hsl(${value})` : "";
+  if (!value) return "";
+  // Already comma/alpha syntax? Leave it. Otherwise convert the HSL triplet's
+  // whitespace separators to commas.
+  const hsl = value.includes(",") ? value : value.split(/\s+/).join(", ");
+  return `hsl(${hsl})`;
 }

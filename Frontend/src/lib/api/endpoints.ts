@@ -53,6 +53,8 @@ export const endpoints = {
     create: () => "/scenarios",
     // What-If scenario engine (live backend, Phase F.10).
     run: () => "/scenarios/run",
+    // Editable What-If grid scaffold: forecast months + per-feature baseline.
+    whatifGrid: () => "/scenarios/whatif/grid",
     save: () => "/scenarios/save",
     remove: (id: string) => `/scenarios/${id}`,
     // Causal Effect Estimation (DoWhy) — Phase Y.A parity.

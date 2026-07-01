@@ -11,7 +11,6 @@ import { ForecastMotif } from "@/components/common/forecast-graphics";
 import { PremiumLiveClock } from "./navbar/premium-live-clock";
 import { ThemeToggle } from "./navbar/theme-toggle";
 import { UserMenu } from "./navbar/user-menu";
-import { CommandTrigger } from "./navbar/command-trigger";
 
 /**
  * Global enterprise product-identity header — the SINGLE branding location and
@@ -155,9 +154,6 @@ export function EnterpriseHeader({
           </div>
         ) : (
           <div className="flex items-center gap-2 pr-2">
-            <div className="hidden xl:block">
-              <CommandTrigger />
-            </div>
             <div className="hidden items-center gap-2 sm:flex">
               <IdentityBadges />
             </div>

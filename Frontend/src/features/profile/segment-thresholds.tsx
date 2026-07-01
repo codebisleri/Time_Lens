@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { RefreshCw, Save, SlidersHorizontal } from "lucide-react";
+import { CheckCheck, RefreshCw, Save, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Disclosure } from "@/features/workflow/disclosure";
 import type { SegmentationParams, SegmentationThresholds } from "@/types/segmentation";
 
 interface Knob {
@@ -60,20 +59,34 @@ function paramFor(params: SegmentationParams, knob: Knob): number {
 }
 
 /**
- * Segmentation threshold controls + Validate & Save — replicates the Streamlit
- * threshold number-inputs (contribution cuts, min periods, lifecycle windows),
- * the Preview/recompute action, and the validator + notes audit-persist flow.
+ * Segmentation thresholds · tune & validate — ALWAYS expanded (no accordion):
+ * Contribution & History cuts, Lifecycle override thresholds, Preview, the
+ * segmentation actions (Run Segmentation, + Use Existing Segments when the upload
+ * already carries a Segments column), and Validate & Save. The threshold draft is
+ * owned here and passed up with each action.
  */
 export function SegmentThresholds({
   params,
   onPreview,
   onValidate,
   busy,
+  onRun,
+  running = false,
+  showUseExisting = false,
+  onUseExisting,
 }: {
   params: SegmentationParams;
   onPreview: (t: SegmentationThresholds) => void;
   onValidate: (t: SegmentationThresholds, validatedBy: string, notes: string) => void;
   busy: boolean;
+  /** Generate the segmentation with the tuned thresholds (then the source-choice
+   *  popup, or auto-activate when no uploaded Segments exist). */
+  onRun: (t: SegmentationThresholds) => void;
+  running?: boolean;
+  /** Show "Use Existing Segments" — only when the upload already has a Segments
+   *  column (Workflow A: adopt the uploaded segmentation without running). */
+  showUseExisting?: boolean;
+  onUseExisting?: () => void;
 }) {
   const [draft, setDraft] = useState<SegmentationThresholds>(() => ({
     highCumShare: params.high_cum_share,
@@ -106,13 +119,11 @@ export function SegmentThresholds({
   );
 
   return (
-    <Disclosure
-      title={
-        <span className="inline-flex items-center gap-2">
-          <SlidersHorizontal className="size-4 text-primary" /> Segmentation thresholds · tune &amp; validate
-        </span>
-      }
-    >
+    <section className="rounded-lg border border-border bg-card/40 p-4">
+      {/* Always visible — no accordion / collapse. */}
+      <h3 className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-foreground">
+        <SlidersHorizontal className="size-4 text-primary" /> Segmentation thresholds · tune &amp; validate
+      </h3>
       <div className="space-y-5">
         <div className="space-y-2">
           <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
@@ -135,6 +146,28 @@ export function SegmentThresholds({
         <Button variant="outline" onClick={() => onPreview(draft)} disabled={busy}>
           <RefreshCw className="size-4" /> Preview with these thresholds
         </Button>
+
+        {/* Segmentation actions. "Run Segmentation" generates a fresh segmentation
+            with these thresholds (the uploaded Segments column is never modified).
+            "Use Existing Segments" (only when an uploaded Segments column exists)
+            adopts the uploaded segmentation directly, without running. */}
+        <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+          <p className="text-sm font-medium text-foreground">Run segmentation</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Generate the segmentation with the thresholds set above. The uploaded Segments column
+            (if any) is never modified — you choose which source to use after it completes.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button onClick={() => onRun(draft)} disabled={busy || running}>
+              <RefreshCw className={running ? "size-4 animate-spin" : "size-4"} /> Run Segmentation
+            </Button>
+            {showUseExisting ? (
+              <Button variant="outline" onClick={() => onUseExisting?.()} disabled={busy || running}>
+                <CheckCheck className="size-4" /> Use Existing Segments
+              </Button>
+            ) : null}
+          </div>
+        </div>
 
         {/* Validate & Save */}
         <Card>
@@ -166,6 +199,6 @@ export function SegmentThresholds({
           </CardContent>
         </Card>
       </div>
-    </Disclosure>
+    </section>
   );
 }

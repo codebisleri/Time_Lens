@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EChartsOption } from "echarts";
-import { Download, Loader2, Play, Save, SlidersHorizontal, Trash2 } from "lucide-react";
+import {
+  Download,
+  GitBranch,
+  Loader2,
+  Lock,
+  Play,
+  Save,
+  SlidersHorizontal,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { PageShell } from "@/components/layout/page-shell";
 import { Button } from "@/components/ui/button";
@@ -22,27 +31,19 @@ import { WorkflowHero } from "@/features/workflow/workflow-hero";
 import { WorkflowLock } from "@/features/workflow/workflow-lock";
 import { useWorkflowStatus } from "@/features/workflow/use-workflow-status";
 import { Field, Select } from "@/features/data/controls";
-import { NumericInput } from "@/components/ui/numeric-input";
 import { useForecastLevel } from "@/lib/stores/forecast-level-store";
 import { useScenarioPlanningStore } from "@/lib/stores/scenario-planning-store";
 import { ScenarioCausalView } from "./scenario-causal-view";
 import { CausalGraph } from "./causal-graph";
+import { WhatIfGrid, type WhatIfGridState } from "./whatif-grid";
 import type { ForecastJob } from "@/types/forecast";
-import type {
-  CausalRunResult,
-  ScenarioAdjustment,
-  ScenarioRunResult,
-  WhatIfChangeType,
-} from "@/types/whatif";
+import type { ScenarioRunResult } from "@/types/whatif";
 
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const POLL_MS = 2500;
 const MAX_WAIT_MS = 12 * 60 * 1000;
-const CHANGE_TYPES: WhatIfChangeType[] = [
-  "Percentage Change",
-  "Constant Change",
-  "Set to New Value",
-];
+
+const EMPTY_GRID: WhatIfGridState = { ready: false, valid: false, months: [], values: {} };
 
 function signed(v: number | null): string {
   return v == null || !Number.isFinite(v) ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(1)}%`;
@@ -107,7 +108,7 @@ function humanList(items: string[]): string {
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
-/** One-line, planner-friendly summary of the scenario impact (Task 6) — e.g.
+/** One-line, planner-friendly summary of the scenario impact — e.g.
  *  "Promotion increases expected demand by 14% (+1,203 units) vs the baseline." */
 function whatifExplanation(r: ScenarioRunResult): string {
   if (r.changePct == null || r.scenarioTotal == null) return "";
@@ -123,15 +124,16 @@ function whatifExplanation(r: ScenarioRunResult): string {
 }
 
 /**
- * Scenario Planning (Step 7 · What-If) — faithful to Streamlit's render_whatif_tab:
- * choose a SKU, add exog adjustments (% / constant / set-to) over the EXISTING
- * forecast horizon, run a re-forecast, and compare scenario vs baseline. A causal
- * relationship graph is shown before running. Scenarios persist per user/dataset.
+ * Scenario Planning (Step 7). The workflow is now strictly:
+ *   Causal Effect Estimation (DoWhy) → causal graph stored → What-If Simulation.
+ * The What-If Feature Simulation stays LOCKED until DoWhy has produced a causal
+ * graph for the selected level; the What-If simulator then CONSUMES that exact
+ * graph (its levers + structure) — no second graph is created. The simulation
+ * uses an editable monthly grid (Feature × forecast month).
  */
 export function ScenarioPlanningView() {
   const workflow = useWorkflowStatus();
-  // Phase Y.16 · Task 4 — the Scenario SKU list is ONLY the forecasted items
-  // (the latest forecast run's metrics), NOT the whole SKU catalog.
+  // The Scenario SKU list is ONLY the forecasted items (the latest run's metrics).
   const metrics = useAsync(() => forecastService.metrics(), []);
   const saved = useAsync(() => whatifService.list(), []);
 
@@ -140,19 +142,15 @@ export function ScenarioPlanningView() {
     [metrics.data],
   );
   const { label: levelLabel } = useForecastLevel();
-  // Persisted planning state (Task 6 — survives refresh / restart / Electron).
-  // Phase Y.11 — no Forecast Horizon input here (parity with Streamlit's
-  // render_whatif_tab): the scenario reuses the EXISTING forecast horizon (the
-  // backend resolves it from the prior single-SKU run / saved config).
-  const { mode, setMode, sku, setSku, adjustments, setAdjustments,
-    applyCausal, setApplyCausal, start, end, setWindow } = useScenarioPlanningStore();
-  const [features, setFeatures] = useState<string[]>([]);
+  const { mode, setMode, sku, setSku, causalGraph } = useScenarioPlanningStore();
+
   const [phase, setPhase] = useState<"idle" | "running" | "error">("idle");
   const [progress, setProgress] = useState(0);
   const [jobMessage, setJobMessage] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ScenarioRunResult | null>(null);
   const [name, setName] = useState("");
+  const [grid, setGrid] = useState<WhatIfGridState>(EMPTY_GRID);
   const cancelled = useRef(false);
 
   useEffect(() => {
@@ -166,6 +164,30 @@ export function ScenarioPlanningView() {
   }, [skus, sku]);
 
   const activeSku = sku && skus.includes(sku) ? sku : (skus[0] ?? "");
+
+  // TASK 1 gate — What-If is unlocked ONLY when a DoWhy causal graph exists for
+  // the active level. When the level changes, the stored graph no longer matches
+  // and What-If re-locks until DoWhy is run for the new level.
+  const graphReady = !!causalGraph && causalGraph.sku === activeSku && causalGraph.variables.treatments.length > 0;
+
+  // TASK 5 — the Scenario page must ALWAYS open on the Causal Effect Estimation
+  // (DoWhy) tab. Force it on entry (mount), regardless of any persisted `mode`.
+  useEffect(() => {
+    setMode("causal");
+    // run once on mount only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // What-If stays LOCKED until a DoWhy causal graph exists for the active level:
+  // if the graph is missing (e.g. the level changed), snap back to the causal tab
+  // so the locked tab can never remain the active view.
+  useEffect(() => {
+    if (mode === "whatif" && !graphReady) setMode("causal");
+  }, [mode, graphReady, setMode]);
+  // The levers the What-If grid edits come straight from the DoWhy graph.
+  const graphLevers = useMemo(
+    () => (graphReady ? causalGraph!.variables.treatments : []),
+    [graphReady, causalGraph],
+  );
 
   const pollJob = useCallback(async (start: ForecastJob): Promise<ForecastJob> => {
     let job = start;
@@ -184,29 +206,16 @@ export function ScenarioPlanningView() {
   }, []);
 
   const run = useCallback(async () => {
-    if (!activeSku) return;
+    if (!activeSku || !grid.ready || !grid.valid) return;
     setPhase("running");
     setProgress(0);
     setError(null);
     try {
-      // "Apply causal estimate" path (parity with render_whatif_tab): estimate
-      // the lever's DoWhy ATE first, then apply it to the baseline. Only when a
-      // single adjustment is set (matches the source's single-rule requirement).
-      let causalAte: number | undefined;
-      if (applyCausal && adjustments.length === 1) {
-        setJobMessage("Estimating causal effect…");
-        const cjob = await pollJob(
-          await whatifService.causalRun({ skuId: activeSku, treatments: [adjustments[0]!.feature] }),
-        );
-        if (cancelled.current) return;
-        const cres = cjob.result as CausalRunResult | null;
-        const ate = cres?.estimates?.[0]?.["Causal Estimate"];
-        if (ate != null && Number.isFinite(ate)) causalAte = ate;
-      }
       const job = await pollJob(
         await whatifService.run({
-          skuId: activeSku, adjustments, causalAte,
-          start: start || undefined, end: end || undefined,
+          skuId: activeSku,
+          monthlyValues: grid.values,
+          months: grid.months,
         }),
       );
       if (cancelled.current) return;
@@ -216,54 +225,14 @@ export function ScenarioPlanningView() {
         return;
       }
       const res = job.result as ScenarioRunResult | null;
-      if (res) {
-        setResult(res);
-        setFeatures(res.availableFeatures ?? []);
-      }
+      if (res) setResult(res);
       setPhase("idle");
     } catch (err) {
       if (cancelled.current) return;
       setError((err as { message?: string })?.message ?? "Scenario run failed.");
       setPhase("error");
     }
-  }, [activeSku, adjustments, applyCausal, start, end, pollJob]);
-
-  // Task 5 — auto-display all available features for the selected item (no manual
-  // "add"). Fetch the item's adjustable drivers up front; each is a toggle row.
-  const featuresQuery = useAsync(
-    () => (activeSku ? whatifService.causalFeatures(activeSku) : Promise.resolve(null)),
-    [activeSku],
-  );
-  const availableFeatures = useMemo(() => {
-    // `exogAccountedFor` is absent when the backend can't do causal analysis
-    // (e.g. DoWhy not installed) — guard against undefined before reading length.
-    const fromApi = featuresQuery.data?.exogAccountedFor ?? [];
-    return fromApi.length ? fromApi : features; // fallback to run-derived features
-  }, [featuresQuery.data, features]);
-
-  const adjByFeature = useMemo(
-    () => new Map(adjustments.map((a) => [a.feature, a])),
-    [adjustments],
-  );
-
-  // Relationship-graph variables (Task 4): the enabled adjustments are the
-  // treatments; the remaining drivers are shown as confounders → demand. Before
-  // any feature is enabled, show ALL drivers as the relationship map.
-  const enabledFeatures = useMemo(() => adjustments.map((a) => a.feature), [adjustments]);
-  const graphTreatments = enabledFeatures.length ? enabledFeatures : availableFeatures;
-  const graphConfounders = enabledFeatures.length
-    ? availableFeatures.filter((f) => !enabledFeatures.includes(f))
-    : [];
-  const DEFAULT_ADJ = { type: "Percentage Change" as WhatIfChangeType, value: 10 };
-  const toggleFeature = (f: string) =>
-    setAdjustments(
-      adjByFeature.has(f)
-        ? adjustments.filter((a) => a.feature !== f)
-        : [...adjustments, { feature: f, ...DEFAULT_ADJ }],
-    );
-  const patchFeature = (f: string, patch: Partial<ScenarioAdjustment>) =>
-    setAdjustments(adjustments.map((a) => (a.feature === f ? { ...a, ...patch } : a)));
-  const resetFeature = (f: string) => patchFeature(f, DEFAULT_ADJ);
+  }, [activeSku, grid, pollJob]);
 
   const exportSeriesCsv = useCallback(() => {
     if (!result) return;
@@ -300,9 +269,7 @@ export function ScenarioPlanningView() {
     try {
       const d = await whatifService.getById(id);
       setSku(d.sku);
-      setAdjustments(d.adjustments ?? []);
       setResult(d.result);
-      setFeatures(d.result.availableFeatures ?? []);
     } catch {
       toast.error("Couldn’t load scenario");
     }
@@ -339,55 +306,60 @@ export function ScenarioPlanningView() {
       title="Scenario Planning"
       description="What-If analysis — adjust feature assumptions and re-forecast against the baseline."
     >
-      {/* Phase X.ZA — shared WorkflowHero (navy hero-gradient), visually identical
-          to Step 3 · Profile & Route and Step 4 · Forecast. Only title/subtitle
-          differ. variant="network" matches the Profile hero motif. */}
       <WorkflowHero
         step="Step 7 · Scenarios"
         title="What-If & Causal Sensitivity"
-        subtitle="Simulate price / promo / festival impact — with causal effect estimation via DoWhy"
+        subtitle="Estimate causal effects with DoWhy, then simulate price / promo / festival impact on the forecast"
         icon={SlidersHorizontal}
         variant="network"
       />
 
-      {/* "How to use this tab" (Streamlit expander 17178-17189). */}
       <details className="rounded-md border border-border/60 bg-secondary/20 p-3">
         <summary className="cursor-pointer text-sm font-medium text-foreground">ℹ️ How to use this tab</summary>
         <div className="mt-2 space-y-1 text-sm text-muted-foreground">
           <p>
-            <strong>Causal Effect Estimation</strong> measures how much a lever (price, promo, discount)
-            actually moves demand for the selected {levelLabel.toLowerCase()}, adjusting for your other drivers.
+            <strong>1. Causal Effect Estimation (DoWhy)</strong> measures how much a lever (price, promo,
+            discount) actually moves demand and generates the causal graph.
           </p>
           <p>
-            <strong>What-If Feature Simulation</strong> applies a lever change over a date window and
-            re-forecasts against the baseline — or applies the causal estimate directly.
-          </p>
-          <p className="text-xs">
-            Best flow: estimate the causal effect first, then apply it in What-If to see the impact on the forecast.
+            <strong>2. What-If Feature Simulation</strong> unlocks once that graph exists — edit each
+            lever month by month and re-compare against the baseline forecast.
           </p>
         </div>
       </details>
 
-      {/* Scenario type — Streamlit radio (render_unified_scenarios_tab 17191-17197). */}
+      {/* Scenario type selector. */}
       <div className="space-y-1">
         <p className="text-sm font-medium text-foreground">Scenario type</p>
         <div className="flex flex-wrap gap-2">
           {([["causal", "Causal Effect Estimation (DoWhy)"], ["whatif", "What-If Feature Simulation"]] as const).map(
-            ([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setMode(id)}
-                className={
-                  "rounded-md border px-3 py-1.5 text-sm transition-colors " +
-                  (mode === id
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground hover:bg-secondary/50")
-                }
-              >
-                {label}
-              </button>
-            ),
+            ([id, label]) => {
+              // TASK 5 — the What-If tab is selectable ONLY after DoWhy has
+              // produced a causal graph for this level; until then it is locked.
+              const locked = id === "whatif" && !graphReady;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => !locked && setMode(id)}
+                  disabled={locked}
+                  aria-disabled={locked}
+                  title={locked ? "Run Causal Effect Estimation (DoWhy) to unlock What-If." : undefined}
+                  className={
+                    "rounded-md border px-3 py-1.5 text-sm transition-colors " +
+                    (mode === id
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border text-muted-foreground hover:bg-secondary/50") +
+                    (locked ? " cursor-not-allowed opacity-60 hover:bg-transparent" : "")
+                  }
+                >
+                  {label}
+                  {locked ? (
+                    <Lock className="ml-1.5 inline size-3 align-[-1px] opacity-70" aria-label="Locked" />
+                  ) : null}
+                </button>
+              );
+            },
           )}
         </div>
       </div>
@@ -411,306 +383,238 @@ export function ScenarioPlanningView() {
       ) : null}
 
       {mode === "whatif" ? (
-      <>
-      {/* Build scenario */}
-      <Card id="build" className="scroll-mt-24">
-        <CardHeader>
-          <CardTitle className="text-base">Build a what-if scenario</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Phase Y.11 — Forecast Horizon input removed (Streamlit parity): the
-              scenario reuses the existing forecast horizon automatically. */}
-          <Field label={levelLabel}>
-            <Select
-              value={activeSku}
-              onChange={setSku}
-              options={skus.map((s) => ({ value: s, label: s }))}
-              ariaLabel={levelLabel}
-            />
-          </Field>
-
-          {/* Task 5 — all available features for this item, each a toggle row
-              (ON/OFF · editable value · reset). Only enabled rows are applied. */}
-          <div className="space-y-2">
-            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
-              Features
-            </p>
-            {featuresQuery.isLoading ? (
-              <Skeleton className="h-20 w-full" />
-            ) : availableFeatures.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                No adjustable features detected for this {levelLabel.toLowerCase()}.
-              </p>
-            ) : (
-              availableFeatures.map((f) => {
-                const adj = adjByFeature.get(f);
-                const on = !!adj;
-                return (
-                  <div key={f} className="grid grid-cols-1 items-center gap-2 rounded-md border border-border/60 p-2 sm:grid-cols-[1.4fr_1.4fr_1fr_auto]">
-                    <label className="flex items-center gap-2 text-sm font-medium text-foreground">
-                      <input type="checkbox" checked={on} onChange={() => toggleFeature(f)} aria-label={`Enable ${f}`} />
-                      {f}
-                    </label>
-                    {on ? (
-                      <>
-                        <Select
-                          value={adj!.type}
-                          onChange={(t) => patchFeature(f, { type: t as WhatIfChangeType })}
-                          options={CHANGE_TYPES.map((t) => ({ value: t, label: t }))}
-                          ariaLabel={`${f} change type`}
-                        />
-                        <NumericInput
-                          value={adj!.value}
-                          onChange={(value) => patchFeature(f, { value })}
-                          allowFloat
-                          ariaLabel={`${f} value`}
-                          className="tabular-nums"
-                        />
-                        <Button variant="ghost" size="sm" onClick={() => resetFeature(f)} aria-label={`Reset ${f}`}>
-                          Reset
-                        </Button>
-                      </>
-                    ) : (
-                      <span className="text-xs text-muted-foreground sm:col-span-3">Off — original value retained</span>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          {/* Run simulation window — Streamlit "#### 3. Run simulation" start/end. */}
-          <div className="space-y-2">
-            <p className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground">
-              Apply over (optional date window)
-            </p>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field label="Start">
-                <Input type="date" value={start} onChange={(e) => setWindow({ start: e.target.value })} aria-label="Start date" />
-              </Field>
-              <Field label="End">
-                <Input type="date" value={end} onChange={(e) => setWindow({ end: e.target.value })} aria-label="End date" />
-              </Field>
-            </div>
-          </div>
-
-          {adjustments.length === 1 ? (
-            <label className="flex items-center gap-2 text-xs text-foreground">
-              <input
-                type="checkbox"
-                checked={applyCausal}
-                onChange={(e) => setApplyCausal(e.target.checked)}
-              />
-              Apply causal estimate from DoWhy (model-agnostic) instead of re-forecasting
-            </label>
-          ) : null}
-
-          <div className="flex items-center gap-3 border-t border-border/60 pt-4">
-            <Button onClick={() => void run()} disabled={running || !activeSku} className="sm:w-56">
-              {running ? (
-                <><Loader2 className="size-4 animate-spin" /> {`Running… ${progress}%`}</>
-              ) : (
-                <><Play className="size-4" /> Run scenario</>
-              )}
-            </Button>
-            {running && jobMessage ? (
-              <span className="text-xs text-muted-foreground">{jobMessage}</span>
-            ) : null}
-          </div>
-          {phase === "error" ? (
-            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              {error}
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      {/* Task 2 — sticky summary of the ACTIVE scenario inputs, so the planner
-          never loses sight of what they entered while scrolling the results.
-          Reads the store directly (instant updates, no API calls); flex-wraps on
-          small screens and stays pinned to the top of the viewport. */}
-      {adjustments.length > 0 ? (
-        <Card className="sticky top-2 z-20 border-brand-accent/40 bg-card/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/80">
-          <CardContent className="flex flex-wrap items-center gap-x-6 gap-y-1.5 py-3">
-            <span className="text-[0.7rem] font-bold uppercase tracking-[0.08em] text-muted-foreground">
-              Scenario inputs
-            </span>
-            {adjustments.map((a) => {
-              const v =
-                a.type === "Percentage Change"
-                  ? `${a.value >= 0 ? "+" : ""}${a.value}%`
-                  : a.type === "Set to New Value"
-                    ? `= ${a.value}`
-                    : `${a.value >= 0 ? "+" : ""}${a.value}`;
-              return (
-                <span key={a.feature} className="text-sm">
-                  <span className="font-medium text-foreground">{a.feature}</span>{" "}
-                  <span className="tabular-nums text-brand-accent">{v}</span>
-                </span>
-              );
-            })}
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {/* Task 4 — model / causal relationship graph, shown BEFORE Run Scenario so
-          the planner understands how the selected drivers relate to demand. Derived
-          from the selected SKU; read-only structure (no DoWhy estimation needed). */}
-      {activeSku ? (
-        <CausalGraph
-          sku={activeSku}
-          treatments={graphTreatments}
-          confounders={graphConfounders}
-          instruments={[]}
-          effectModifiers={[]}
-        />
-      ) : null}
-
-      {/* Result */}
-      <span id="results" className="block scroll-mt-24" aria-hidden />
-      {result ? (
         <>
-          {result.message ? (
-            <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground">
-              {result.message}
-            </div>
-          ) : null}
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Kpi label="Baseline total" value={formatNumber(Math.round(result.baselineTotal))} sub={`Champion: ${result.championModel}`} />
-            <Kpi
-              label="Scenario total"
-              value={result.scenarioTotal == null ? "—" : formatNumber(Math.round(result.scenarioTotal))}
-              sub={result.deltaUnits == null ? undefined : `${result.deltaUnits > 0 ? "+" : ""}${formatNumber(Math.round(result.deltaUnits))} vs baseline`}
-            />
-            <Kpi label="Change %" value={signed(result.changePct)} />
-          </div>
-
-          {/* Task 6 — one-line, planner-friendly impact explanation. */}
-          {whatifExplanation(result) ? (
-            <div className="rounded-md border border-primary/25 bg-primary/5 px-4 py-2.5 text-sm font-medium text-foreground">
-              {whatifExplanation(result)}
-            </div>
-          ) : null}
-
+          {/* Level selector (shared with the causal step). */}
           <Card>
-            <CardContent className="space-y-3 pt-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-medium text-foreground">Baseline vs Scenario</h3>
-                <Button variant="outline" size="sm" onClick={exportSeriesCsv}>
-                  <Download className="size-3.5" /> CSV
-                </Button>
-              </div>
-              <ScenarioChart result={result} />
+            <CardContent className="pt-6">
+              <Field label={levelLabel}>
+                <Select
+                  value={activeSku}
+                  onChange={setSku}
+                  options={skus.map((s) => ({ value: s, label: s }))}
+                  ariaLabel={levelLabel}
+                />
+              </Field>
             </CardContent>
           </Card>
 
-          {/* Task 5 — scenario waterfall: Baseline → per-driver contribution →
-              Scenario, derived from the existing forecast (no re-run). */}
-          {result.waterfall && result.waterfall.length > 2 ? (
-            <Card>
-              <CardContent className="space-y-2 pt-6">
-                <h3 className="text-sm font-medium text-foreground">Scenario breakdown</h3>
-                <div className="divide-y divide-border/60">
-                  {result.waterfall.map((step, i) => {
-                    const isEdge = step.type !== "delta";
-                    const v = Math.round(step.value);
-                    const display =
-                      isEdge
-                        ? formatNumber(v)
-                        : `${v > 0 ? "+" : ""}${formatNumber(v)}`;
-                    return (
-                      <div key={`${step.label}-${i}`} className="flex items-center justify-between py-2 text-sm">
-                        <span className={isEdge ? "font-semibold text-foreground" : "text-muted-foreground"}>
-                          {step.label}
-                        </span>
-                        <span
-                          className={
-                            "tabular-nums " +
-                            (isEdge
-                              ? "font-semibold text-foreground"
-                              : v > 0
-                                ? "text-success"
-                                : v < 0
-                                  ? "text-destructive"
-                                  : "text-muted-foreground")
-                          }
-                        >
-                          {display} units
-                        </span>
-                      </div>
-                    );
-                  })}
+          {!graphReady ? (
+            // TASK 1 — locked until a DoWhy causal graph exists for this level.
+            <Card className="border-warning/40">
+              <CardContent className="flex flex-col items-start gap-3 pt-6">
+                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+                  <Lock className="size-4 text-warning" /> What-If Feature Simulation is locked
                 </div>
-              </CardContent>
-            </Card>
-          ) : null}
-
-          {result.supported ? (
-            <Card>
-              <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-end">
-                <Field label="Scenario name" className="flex-1">
-                  <Input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder={`Scenario · ${result.sku}`}
-                  />
-                </Field>
-                <Button variant="outline" onClick={() => void save()}>
-                  <Save className="size-4" /> Save scenario
+                <p className="text-sm text-muted-foreground">
+                  Run Causal Effect Estimation (DoWhy) to generate the causal graph before performing
+                  What-If simulations.
+                </p>
+                <Button onClick={() => setMode("causal")}>
+                  <GitBranch className="size-4" /> Run Causal Effect Estimation (DoWhy)
                 </Button>
               </CardContent>
             </Card>
-          ) : null}
-        </>
-      ) : null}
-
-      {/* Saved scenarios */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Saved scenarios</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {saved.isLoading ? (
-            <Skeleton className="h-24 w-full" />
-          ) : (saved.data ?? []).length === 0 ? (
-            <EmptyState title="No saved scenarios" description="Run and save a what-if scenario to keep it here." />
           ) : (
-            <div className="overflow-auto rounded-lg border border-border">
-              <table className="w-full border-collapse text-sm">
-                <thead className="bg-card text-left text-xs text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 font-medium">Name</th>
-                    <th className="px-3 py-2 font-medium">{levelLabel}</th>
-                    <th className="px-3 py-2 font-medium">Model</th>
-                    <th className="px-3 py-2 text-right font-medium">Change %</th>
-                    <th className="px-3 py-2 text-right font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(saved.data ?? []).map((s) => (
-                    <tr key={s.id} className="border-t border-border/60">
-                      <td className="px-3 py-2 text-foreground">{s.name}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{s.sku}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{s.championModel ?? "—"}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{signed(s.changePct)}</td>
-                      <td className="px-3 py-2 text-right">
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="sm" onClick={() => void loadSaved(s.id)}>View</Button>
-                          <Button variant="ghost" size="icon" onClick={() => void removeSaved(s.id)} aria-label="Delete">
-                            <Trash2 className="size-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              {/* Consume the DoWhy causal graph — the SAME structure the estimation
+                  produced (its treatments / confounders), not a separately-built one. */}
+              <Card>
+                <CardContent className="space-y-2 pt-6">
+                  <p className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                    <GitBranch className="size-4 text-primary" /> Using the causal graph from DoWhy
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Generated {formatDate(causalGraph!.generatedAt, { month: "short", day: "numeric", year: "numeric" })}.
+                    The levers below come directly from this graph.
+                  </p>
+                </CardContent>
+              </Card>
+              <CausalGraph
+                sku={activeSku}
+                treatments={causalGraph!.variables.treatments}
+                confounders={causalGraph!.variables.confounders}
+                instruments={causalGraph!.variables.instruments}
+                effectModifiers={causalGraph!.variables.effect_modifiers}
+              />
+
+              {/* TASK 2 — editable monthly grid (Feature × forecast month). */}
+              <Card id="build" className="scroll-mt-24">
+                <CardHeader>
+                  <CardTitle className="text-base">What-If feature assumptions</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <WhatIfGrid sku={activeSku} features={graphLevers} onChange={setGrid} />
+
+                  <div className="flex flex-wrap items-center gap-3 border-t border-border/60 pt-4">
+                    <Button
+                      onClick={() => void run()}
+                      disabled={running || !activeSku || !grid.ready || !grid.valid}
+                      className="sm:w-56"
+                    >
+                      {running ? (
+                        <><Loader2 className="size-4 animate-spin" /> {`Running… ${progress}%`}</>
+                      ) : (
+                        <><Play className="size-4" /> Run scenario</>
+                      )}
+                    </Button>
+                    {!grid.valid && grid.ready ? (
+                      <span className="text-xs text-destructive">
+                        Fix the highlighted cells before running.
+                      </span>
+                    ) : null}
+                    {running && jobMessage ? (
+                      <span className="text-xs text-muted-foreground">{jobMessage}</span>
+                    ) : null}
+                  </div>
+                  {phase === "error" ? (
+                    <div className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                      {error}
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
+            </>
           )}
-        </CardContent>
-      </Card>
-      </>
+
+          {/* Result */}
+          <span id="results" className="block scroll-mt-24" aria-hidden />
+          {result ? (
+            <>
+              {result.message ? (
+                <div className="rounded-md border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-foreground">
+                  {result.message}
+                </div>
+              ) : null}
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Kpi label="Baseline total" value={formatNumber(Math.round(result.baselineTotal))} sub={`Champion: ${result.championModel}`} />
+                <Kpi
+                  label="Scenario total"
+                  value={result.scenarioTotal == null ? "—" : formatNumber(Math.round(result.scenarioTotal))}
+                  sub={result.deltaUnits == null ? undefined : `${result.deltaUnits > 0 ? "+" : ""}${formatNumber(Math.round(result.deltaUnits))} vs baseline`}
+                />
+                <Kpi label="Change %" value={signed(result.changePct)} />
+              </div>
+
+              {whatifExplanation(result) ? (
+                <div className="rounded-md border border-primary/25 bg-primary/5 px-4 py-2.5 text-sm font-medium text-foreground">
+                  {whatifExplanation(result)}
+                </div>
+              ) : null}
+
+              <Card>
+                <CardContent className="space-y-3 pt-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium text-foreground">Baseline vs Scenario</h3>
+                    <Button variant="outline" size="sm" onClick={exportSeriesCsv}>
+                      <Download className="size-3.5" /> CSV
+                    </Button>
+                  </div>
+                  <ScenarioChart result={result} />
+                </CardContent>
+              </Card>
+
+              {result.waterfall && result.waterfall.length > 2 ? (
+                <Card>
+                  <CardContent className="space-y-2 pt-6">
+                    <h3 className="text-sm font-medium text-foreground">Scenario breakdown</h3>
+                    <div className="divide-y divide-border/60">
+                      {result.waterfall.map((step, i) => {
+                        const isEdge = step.type !== "delta";
+                        const v = Math.round(step.value);
+                        const display = isEdge ? formatNumber(v) : `${v > 0 ? "+" : ""}${formatNumber(v)}`;
+                        return (
+                          <div key={`${step.label}-${i}`} className="flex items-center justify-between py-2 text-sm">
+                            <span className={isEdge ? "font-semibold text-foreground" : "text-muted-foreground"}>
+                              {step.label}
+                            </span>
+                            <span
+                              className={
+                                "tabular-nums " +
+                                (isEdge
+                                  ? "font-semibold text-foreground"
+                                  : v > 0
+                                    ? "text-success"
+                                    : v < 0
+                                      ? "text-destructive"
+                                      : "text-muted-foreground")
+                              }
+                            >
+                              {display} units
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null}
+
+              {result.supported ? (
+                <Card>
+                  <CardContent className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-end">
+                    <Field label="Scenario name" className="flex-1">
+                      <Input
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder={`Scenario · ${result.sku}`}
+                      />
+                    </Field>
+                    <Button variant="outline" onClick={() => void save()}>
+                      <Save className="size-4" /> Save scenario
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : null}
+            </>
+          ) : null}
+
+          {/* Saved scenarios */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Saved scenarios</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {saved.isLoading ? (
+                <Skeleton className="h-24 w-full" />
+              ) : (saved.data ?? []).length === 0 ? (
+                <EmptyState title="No saved scenarios" description="Run and save a what-if scenario to keep it here." />
+              ) : (
+                <div className="overflow-auto rounded-lg border border-border">
+                  <table className="w-full border-collapse text-sm">
+                    <thead className="bg-card text-left text-xs text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">Name</th>
+                        <th className="px-3 py-2 font-medium">{levelLabel}</th>
+                        <th className="px-3 py-2 font-medium">Model</th>
+                        <th className="px-3 py-2 text-right font-medium">Change %</th>
+                        <th className="px-3 py-2 text-right font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(saved.data ?? []).map((s) => (
+                        <tr key={s.id} className="border-t border-border/60">
+                          <td className="px-3 py-2 text-foreground">{s.name}</td>
+                          <td className="px-3 py-2 font-mono text-xs">{s.sku}</td>
+                          <td className="px-3 py-2 text-muted-foreground">{s.championModel ?? "—"}</td>
+                          <td className="px-3 py-2 text-right tabular-nums">{signed(s.changePct)}</td>
+                          <td className="px-3 py-2 text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button variant="ghost" size="sm" onClick={() => void loadSaved(s.id)}>View</Button>
+                              <Button variant="ghost" size="icon" onClick={() => void removeSaved(s.id)} aria-label="Delete">
+                                <Trash2 className="size-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </>
       ) : null}
     </PageShell>
   );

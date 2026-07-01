@@ -5,6 +5,7 @@ import type { EChartsOption } from "echarts";
 import { EChartBase } from "@/components/charts/echart-base";
 import { useThemeMode } from "@/lib/theme/use-theme-mode";
 import { readCssVar } from "@/lib/theme/theme-config";
+import { chartColors, withAlpha } from "@/lib/charts/colors";
 import { formatCompact, formatDate, formatNumber } from "@/lib/utils/format";
 import { isWeekendDate } from "@/lib/utils/holidays";
 import type {
@@ -86,10 +87,8 @@ const SEASON_MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
-const SEASON_PALETTE = [
-  "#2563eb", "#ea580c", "#16a34a", "#7c3aed", "#db2777",
-  "#0891b2", "#ca8a04", "#dc2626", "#4f46e5", "#0d9488",
-];
+// Issue 4 — the per-year seasonality palette is resolved from the theme chart
+// tokens at render time (see the option memo); no hardcoded hex.
 
 /**
  * Seasonality — one LINE PER YEAR over Jan→Dec (Phase X.T · Task 5), replacing
@@ -107,6 +106,7 @@ export function EdaSeasonalityChart({
   const { resolvedMode } = useThemeMode();
   const option = useMemo<EChartsOption>(() => {
     void resolvedMode;
+    const SEASON_PALETTE = chartColors().palette;
     const byYear = new Map<number, (number | null)[]>();
     for (const p of Array.isArray(series) ? series : []) {
       if (p.value == null || !p.date) continue;
@@ -384,7 +384,7 @@ export function EdaMonthlyBoxChart({
       series: [{
         name: "Monthly", type: "boxplot", boxWidth: ["35%", "60%"],
         data: rows.map((d) => [d.min ?? 0, d.q1 ?? 0, d.median ?? 0, d.q3 ?? 0, d.max ?? 0]),
-        itemStyle: { color: `${color}33`, borderColor: color, borderWidth: 1.5 },
+        itemStyle: { color: withAlpha(color, 0.2), borderColor: color, borderWidth: 1.5 },
       }],
     };
   }, [data, resolvedMode]);
