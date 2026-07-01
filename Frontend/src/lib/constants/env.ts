@@ -22,7 +22,7 @@ export const env = {
     "Enterprise Forecast Intelligence Platform",
   productTagline:
     process.env.NEXT_PUBLIC_PRODUCT_TAGLINE ?? "Forecast Planning Suite",
-  appVersion: process.env.NEXT_PUBLIC_APP_VERSION ?? "1.1.0",
+  appVersion: process.env.NEXT_PUBLIC_APP_VERSION ?? "1.2.0",
   // Deployment environment badge — defaults from NODE_ENV, override explicitly.
   environment:
     process.env.NEXT_PUBLIC_ENVIRONMENT ??

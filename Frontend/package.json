@@ -1,6 +1,6 @@
 {
   "name": "time-lens-frontend",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Time Lens — retail demand forecasting platform (frontend + desktop shell)",
   "main": "electron/main.js",
@@ -26,8 +26,9 @@
     "copyright": "Time Lens",
     "publish": [
       {
-        "provider": "generic",
-        "url": "https://downloads.timelens.ai/releases"
+        "provider": "github",
+        "owner": "codebisleri",
+        "repo": "Time_Lens"
       }
     ],
     "directories": {
@@ -64,7 +65,7 @@
       }
     ],
     "win": {
-      "icon": "build/icon.png",
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -94,7 +95,7 @@
       "artifactName": "TimeLens.${ext}"
     },
     "mac": {
-      "icon": "build/icon.png",
+      "icon": "build/icon.ico",
       "category": "public.app-category.business",
       "hardenedRuntime": false,
       "identity": null,
