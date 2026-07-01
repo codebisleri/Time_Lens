@@ -5583,7 +5583,7 @@ def _build_segmentation(
     # source faithfully (canonical labels still map onto the 3×3 architecture grid).
     if eff_source == "uploaded":
         _known = set(matrix_order) | set(lifecycle_order) | {"CV NULL/0"}
-        for lbl in counts.index:
+        for lbl in counts.keys():
             if str(lbl) not in _known:
                 grid.append(_grid_card(str(lbl), "matrix"))
 
